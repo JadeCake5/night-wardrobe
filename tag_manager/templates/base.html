@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>夜之主衣柜</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=13">
 </head>
 <body>
   <header>
-    <a class="brand" href="/">夜之主衣柜 <small>v1.0.0</small></a>
+    <a class="brand" href="/">夜之主衣柜 <small>v1.0.1</small></a>
     <nav>
       <a href="/tags">Tag 库</a>
       <a href="/characters">角色卡</a>
@@ -20,5 +20,58 @@
   <main>
     {% block content %}{% endblock %}
   </main>
+  <script>
+  (function() {
+    const nav = document.querySelector('header nav');
+    const main = document.querySelector('main');
+
+    function updateActiveNav(path) {
+      nav.querySelectorAll('a').forEach(a => {
+        a.classList.toggle('active', path.startsWith(a.getAttribute('href')));
+      });
+    }
+
+    function execScripts(container) {
+      container.querySelectorAll('script').forEach(old => {
+        const s = document.createElement('script');
+        if (old.src) { s.src = old.src; } else { s.textContent = old.textContent; }
+        old.replaceWith(s);
+      });
+    }
+
+    async function navigate(url, pushState) {
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) return false;
+        const html = await resp.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const newMain = doc.querySelector('main');
+        if (!newMain) return false;
+        main.innerHTML = newMain.innerHTML;
+        execScripts(main);
+        if (pushState) history.pushState(null, '', url);
+        updateActiveNav(new URL(url, location.origin).pathname);
+        window.scrollTo(0, 0);
+        return true;
+      } catch(e) { return false; }
+    }
+
+    nav.addEventListener('click', e => {
+      const a = e.target.closest('a');
+      if (!a || !a.getAttribute('href').startsWith('/')) return;
+      e.preventDefault();
+      navigate(a.href, true).then(ok => { if (!ok) location.href = a.href; });
+    });
+
+    document.querySelector('.brand').addEventListener('click', e => {
+      e.preventDefault();
+      navigate('/', true).then(ok => { if (!ok) location.href = '/'; });
+    });
+
+    window.addEventListener('popstate', () => { navigate(location.href, false); });
+
+    updateActiveNav(location.pathname);
+  })();
+  </script>
 </body>
 </html>

@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="tag-workbench">
+  <div class="tag-toolbar">
+    <div>
+      <h1>Tag 库</h1>
+      <p>展示 {{ rows|length }} / {{ shown_count }}，总计 {{ total_count }}</p>
+    </div>
+    <form class="tag-search" method="get" action="/tags">
+      {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+      {% if subcategory %}<input type="hidden" name="subcategory" value="{{ subcategory }}">{% endif %}
+      <input name="q" value="{{ q }}" placeholder="搜索 tag / 中文 / 备注">
+      <button>搜索</button>
+    </form>
+  </div>
+
+  <div class="prompt-ui-panel compact">
+    <div class="prompt-ui-actions">
+      <button type="button" onclick="copySelectedTags()">复制已选</button>
+      <button type="button" onclick="clearSelectedTags()">清空</button>
+      <input id="newKeyword" placeholder="手动输入新关键词" style="width: 200px; margin-left: 10px;">
+      <button type="button" onclick="toggleAddTagPanel()">+ 新增 Tag</button>
+      <label class="mode-toggle" title="开启后才显示每个 tag 的编辑/删除入口">
+        <input id="editModeToggle" type="checkbox" onchange="toggleEditMode()">
+        修改 Tag 模式
+      </label>
+    </div>
+    <textarea id="selectedTags" placeholder="点击下方 tag，会自动加入这里，用逗号分隔。"></textarea>
+  </div>
+
+  <nav class="category-bar">
+    <a class="category-tab {% if not category %}active{% endif %}" href="{{ tag_url(q=q) }}">全部</a>
+    {% for item in categories %}
+      <span class="category-tab-wrap">
+        <a class="category-tab {% if category == item.category %}active{% endif %}" href="{{ tag_url(category=item.category, q=q) }}">
+          {{ item.category }} <small>{{ item.count }}</small>
+        </a>
+        <button type="button" class="tab-delete edit-only" onclick="deleteCategory('{{ item.category }}')">×</button>
+      </span>
+    {% endfor %}
+    <button type="button" class="category-tab add-btn" onclick="document.getElementById('addCategoryDialog').showModal()">+ 新增分类</button>
+  </nav>
+
+  <nav class="subcategory-bar">
+    <a class="subcategory-tab {% if not subcategory %}active{% endif %}" href="{{ tag_url(category=category, q=q) }}">全部</a>
+    {% for item in subcategories %}
+      <span class="subcategory-tab-wrap">
+        <a class="subcategory-tab {% if subcategory == item.subcategory %}active{% endif %}" href="{{ tag_url(category=category, subcategory=item.subcategory, q=q) }}">
+          {{ item.subcategory }} <small>{{ item.count }}</small>
+        </a>
+        <button type="button" class="tab-delete edit-only" onclick="deleteSubcategory('{{ category }}', '{{ item.subcategory }}')">×</button>
+      </span>
+    {% endfor %}
+  </nav>
+</section>
+
+<div id="addTagPanel" class="floating-panel hidden">
+  <div class="floating-panel-header" id="addTagPanelHeader">
+    <h3>新增 Tag</h3>
+    <button type="button" onclick="document.getElementById('addTagPanel').classList.add('hidden')">×</button>
+  </div>
+  <form class="labeled-form floating-panel-body" method="post" action="/tags/add">
+    <label><span>英文 Tag</span><input name="tag" placeholder="例如：1girl" required></label>
+    <label><span>中文显示名</span><input name="zh" placeholder="例如：1女孩"></label>
+    <label><span>一级分类</span><select name="category" required>
+      <option value="">请选择分类</option>
+      {% for item in categories %}<option value="{{ item.category }}" {% if category == item.category %}selected{% endif %}>{{ item.category }}</option>{% endfor %}
+    </select></label>
+    <label><span>二级分类</span>
+      <select name="subcategory" onchange="handleSubcategoryNew(this)">
+        <option value="">不选择</option>
+        {% for item in subcategories %}<option value="{{ item.subcategory }}" {% if subcategory == item.subcategory %}selected{% endif %}>{{ item.subcategory }}</option>{% endfor %}
+        <option value="__new__">+ 新增二级分类</option>
+      </select>
+    </label>
+    <label><span>备注</span><input name="notes" placeholder="用法、注意事项或个人评价"></label>
+    <button>新增 Tag</button>
+  </form>
+</div>
+
+<dialog id="addCategoryDialog" class="maintenance-dialog">
+  <div class="dialog-header">
+    <h3>新增一级分类</h3>
+    <button type="button" onclick="this.closest('dialog').close()">×</button>
+  </div>
+  <form class="labeled-form category-create-form" method="post" action="/categories/add">
+    <label><span>新增一级分类名称</span><input name="name" placeholder="例如：7.画风 / 我的常用" required></label>
+    <label><span>分类用途</span><select name="kind"><option value="tag">Tag 分类</option><option value="group">组合分类</option><option value="both">两者都用</option></select></label>
+    <label><span>分类备注</span><input name="notes" placeholder="这个分类用来放什么"></label>
+    <button>新增分类</button>
+  </form>
+</dialog>
+
+<div class="tag-grid">
+{% for row in rows %}
+  <article class="tag-tile" title="{{ row.notes }} {{ row.source }}">
+    <button type="button" class="tag-button" data-tag="{{ row.tag }}" onclick="toggleTagSelection(this)">
+      <span class="tag-tile-zh">{{ row.zh or row.tag }}</span>
+      <span class="tag-tile-en">{{ row.tag }}</span>
+    </button>
+    <div class="tag-meta">
+      <span>{{ row.category }}</span>
+      {% if row.subcategory %}<span>{{ row.subcategory }}</span>{% endif %}
+    </div>
+    <details class="tag-edit edit-only">
+      <summary>编辑</summary>
+      <form class="inline-edit labeled-form" method="post" action="/tags/{{ row.id }}/update">
+        <label><span>英文 Tag</span><input name="tag" value="{{ row.tag }}"></label>
+        <label><span>中文显示名</span><input name="zh" value="{{ row.zh }}"></label>
+        <label><span>一级分类</span><select name="category">
+          {% for item in categories %}<option value="{{ item.category }}" {% if row.category == item.category %}selected{% endif %}>{{ item.category }}</option>{% endfor %}
+        </select></label>
+        <label><span>二级分类</span>
+          <select name="subcategory" onchange="handleSubcategoryNew(this)">
+            <option value="">不选择</option>
+            {% for item in subcategories %}<option value="{{ item.subcategory }}" {% if row.subcategory == item.subcategory %}selected{% endif %}>{{ item.subcategory }}</option>{% endfor %}
+            <option value="__new__">+ 新增二级分类</option>
+          </select>
+        </label>
+        <label><span>备注</span><input name="notes" value="{{ row.notes }}"></label>
+        <button>保存</button>
+        <button form="delete-{{ row.id }}">删除</button>
+      </form>
+      <form id="delete-{{ row.id }}" method="post" action="/tags/{{ row.id }}/delete"></form>
+    </details>
+  </article>
+{% endfor %}
+</div>
+
+<script>
+function splitTags(value) {
+  return value.split(',').map(x => x.trim()).filter(Boolean);
+}
+function syncSelectedButtons() {
+  const tags = splitTags(document.getElementById('selectedTags').value);
+  document.querySelectorAll('.tag-button').forEach(button => {
+    button.classList.toggle('selected', tags.includes(button.dataset.tag));
+  });
+}
+function writeSelectedTags(tags) {
+  document.getElementById('selectedTags').value = tags.join(', ') + (tags.length ? ', ' : '');
+  syncSelectedButtons();
+}
+function toggleTagSelection(button) {
+  const tag = button.dataset.tag;
+  const tags = splitTags(document.getElementById('selectedTags').value);
+  const index = tags.indexOf(tag);
+  if (index >= 0) {
+    tags.splice(index, 1);
+  } else {
+    tags.push(tag);
+  }
+  writeSelectedTags(tags);
+}
+function addTagToSelected(tag) {
+  const tags = splitTags(document.getElementById('selectedTags').value);
+  if (!tags.includes(tag)) tags.push(tag);
+  writeSelectedTags(tags);
+}
+async function copySelectedTags() {
+  const box = document.getElementById('selectedTags');
+  await navigator.clipboard.writeText(box.value);
+}
+function clearSelectedTags() {
+  writeSelectedTags([]);
+}
+function toggleEditMode() {
+  document.body.classList.toggle('edit-mode', document.getElementById('editModeToggle').checked);
+}
+function handleSubcategoryNew(select) {
+  if (select.value !== '__new__') return;
+  const input = document.createElement('input');
+  input.name = 'subcategory';
+  input.placeholder = '输入新的二级分类名称';
+  input.style.marginTop = '4px';
+  select.parentNode.replaceChild(input, select);
+  input.focus();
+}
+function deleteCategory(name) {
+  if (!confirm('确定删除分类「' + name + '」？该分类下的 tag 不会被删除，但分类会被清空。')) return;
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/categories/delete';
+  const input = document.createElement('input');
+  input.type = 'hidden'; input.name = 'name'; input.value = name;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+}
+function deleteSubcategory(category, subcategory) {
+  if (!confirm('确定删除二级分类「' + subcategory + '」？该分类下的 tag 不会被删除，但二级分类会被清空。')) return;
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/subcategories/delete';
+  const catInput = document.createElement('input');
+  catInput.type = 'hidden'; catInput.name = 'category'; catInput.value = category;
+  const subInput = document.createElement('input');
+  subInput.type = 'hidden'; subInput.name = 'subcategory'; subInput.value = subcategory;
+  form.appendChild(catInput);
+  form.appendChild(subInput);
+  document.body.appendChild(form);
+  form.submit();
+}
+function toggleAddTagPanel() {
+  const panel = document.getElementById('addTagPanel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden') && !panel.dataset.positioned) {
+    panel.style.top = '120px';
+    panel.style.left = (window.innerWidth - 340) / 2 + 'px';
+    panel.dataset.positioned = '1';
+  }
+}
+
+(function() {
+  const header = document.getElementById('addTagPanelHeader');
+  const panel = document.getElementById('addTagPanel');
+  let dragging = false, offsetX = 0, offsetY = 0;
+  header.addEventListener('mousedown', function(e) {
+    dragging = true;
+    offsetX = e.clientX - panel.offsetLeft;
+    offsetY = e.clientY - panel.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    panel.style.left = (e.clientX - offsetX) + 'px';
+    panel.style.top = (e.clientY - offsetY) + 'px';
+  });
+  document.addEventListener('mouseup', function() { dragging = false; });
+})();
+
+document.getElementById('selectedTags').addEventListener('input', syncSelectedButtons);
+document.getElementById('newKeyword').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = this.value.trim();
+    if (val) {
+      addTagToSelected(val);
+      this.value = '';
+    }
+  }
+});
+syncSelectedButtons();
+
+// AJAX 分类切换
+function ajaxNavigate(url) {
+  fetch(url).then(r => r.text()).then(html => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const newSub = doc.querySelector('.subcategory-bar');
+    const newGrid = doc.querySelector('.tag-grid');
+    const newStats = doc.querySelector('.tag-toolbar p');
+    const newCatBar = doc.querySelector('.category-bar');
+    if (newCatBar) document.querySelector('.category-bar').innerHTML = newCatBar.innerHTML;
+    if (newSub) document.querySelector('.subcategory-bar').innerHTML = newSub.innerHTML;
+    if (newGrid) document.querySelector('.tag-grid').innerHTML = newGrid.innerHTML;
+    if (newStats) document.querySelector('.tag-toolbar p').innerHTML = newStats.innerHTML;
+    history.pushState(null, '', url);
+    syncSelectedButtons();
+    bindTabClicks();
+    if (document.getElementById('editModeToggle').checked) {
+      document.body.classList.add('edit-mode');
+    }
+  });
+}
+function bindTabClicks() {
+  document.querySelectorAll('.category-tab, .subcategory-tab').forEach(a => {
+    if (a.tagName !== 'A') return;
+    a.onclick = function(e) {
+      e.preventDefault();
+      ajaxNavigate(this.href);
+    };
+  });
+}
+bindTabClicks();
+window.addEventListener('popstate', function() { location.reload(); });
+
+// 栏位高度持久化
+function saveBarHeight(key, el) {
+  new ResizeObserver(() => {
+    localStorage.setItem(key, el.style.height || el.offsetHeight + 'px');
+  }).observe(el);
+  const saved = localStorage.getItem(key);
+  if (saved) el.style.height = saved;
+}
+saveBarHeight('catBarHeight', document.querySelector('.category-bar'));
+saveBarHeight('subBarHeight', document.querySelector('.subcategory-bar'));
+</script>
+{% endblock %}

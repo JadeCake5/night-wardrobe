@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>夜之主衣柜</h1>
+  <p>管理角色卡、配方库、提示词工坊，以及带工作流的图库案例。</p>
+</section>
+<section class="cards">
+  <div class="card"><strong>{{ stats.tags }}</strong><span>Tags</span></div>
+  <div class="card"><strong>{{ stats.characters }}</strong><span>角色</span></div>
+  <div class="card"><strong>{{ stats.recipes }}</strong><span>配方</span></div>
+  <div class="card"><strong>{{ stats.images }}</strong><span>图库图片</span></div>
+</section>
+<section class="actions">
+  {% if dev_mode %}
+  <form method="post" action="/import-magic-book"><button>从魔导书重新导入</button></form>
+  <form method="post" action="/scan-gallery"><button>扫描图库</button></form>
+  {% endif %}
+  <form method="post" action="/export-tags"><button>导出 Tag 库 (JSON)</button></form>
+  <form method="post" action="/import-tags"><button>从 JSON 导入 Tag 库</button></form>
+</section>
+<h2>最近图库</h2>
+<div class="grid">
+  {% for image in recent_images %}
+  <a class="thumb" href="/gallery?q={{ image.title }}">
+    <img src="/gallery-files/{{ image.path }}" alt="{{ image.title }}">
+    <span>{{ image.title }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

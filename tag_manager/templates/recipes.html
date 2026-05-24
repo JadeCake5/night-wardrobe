@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>配方库</h1>
+
+<div class="recipe-tabs">
+  <a class="tab {% if not type %}active{% endif %}" href="/recipes">全部</a>
+  {% for t_id, t_label in recipe_types %}
+  <a class="tab {% if type == t_id %}active{% endif %}" href="/recipes?type={{ t_id }}">
+    {{ t_label }} <small>({{ count_map.get(t_id, 0) }})</small>
+  </a>
+  {% endfor %}
+</div>
+
+<form class="search" method="get">
+  <input type="hidden" name="type" value="{{ type }}">
+  <input name="q" value="{{ q }}" placeholder="搜索配方名 / 提示词 / 备注">
+  <button>搜索</button>
+</form>
+
+<button class="btn-float" onclick="document.getElementById('add-panel').style.display='flex'">+ 新增配方</button>
+
+<!-- 新增悬浮窗 -->
+<div id="add-panel" class="floating-panel" style="display:none">
+  <div class="panel-header">
+    <span>新增配方</span>
+    <button class="panel-close" onclick="this.closest('.floating-panel').style.display='none'">&times;</button>
+  </div>
+  <form class="vertical" method="post" action="/recipes/add">
+    <input name="name" placeholder="配方名称" required>
+    <select name="type">
+      {% for t_id, t_label in recipe_types %}
+      <option value="{{ t_id }}">{{ t_label }}</option>
+      {% endfor %}
+    </select>
+    <textarea name="positive_prompt" rows="4" placeholder="正向提示词"></textarea>
+    <textarea name="negative_prompt" rows="3" placeholder="负向提示词"></textarea>
+    <textarea name="params_json" rows="2" placeholder='绘图参数 JSON（如 {"sampler":"Euler","steps":30}）'></textarea>
+    <input name="notes" placeholder="备注">
+    <button>保存</button>
+  </form>
+</div>
+
+<!-- 配方卡片列表 -->
+<div class="recipe-grid">
+{% for row in rows %}
+  <article class="recipe-card" data-id="{{ row.id }}">
+    <div class="recipe-card-header">
+      <h3>{{ row.name }}</h3>
+      <span class="recipe-type-badge">{{ dict(recipe_types).get(row.type, row.type) }}</span>
+    </div>
+    {% if row.positive_prompt %}
+    <div class="recipe-field">
+      <label>Positive</label>
+      <div class="recipe-text">{{ row.positive_prompt[:200] }}{% if row.positive_prompt|length > 200 %}...{% endif %}</div>
+      <button class="btn-copy" onclick="copyText(this, '{{ row.positive_prompt|replace("'", "\\'") | replace("\n", " ") }}')">复制</button>
+    </div>
+    {% endif %}
+    {% if row.negative_prompt %}
+    <div class="recipe-field">
+      <label>Negative</label>
+      <div class="recipe-text negative">{{ row.negative_prompt[:150] }}{% if row.negative_prompt|length > 150 %}...{% endif %}</div>
+      <button class="btn-copy" onclick="copyText(this, '{{ row.negative_prompt|replace("'", "\\'") | replace("\n", " ") }}')">复制</button>
+    </div>
+    {% endif %}
+    {% if row.params_json %}
+    <div class="recipe-field">
+      <label>参数</label>
+      <div class="recipe-text params">{{ row.params_json }}</div>
+    </div>
+    {% endif %}
+    {% if row.notes %}
+    <p class="recipe-notes">{{ row.notes }}</p>
+    {% endif %}
+    <div class="recipe-actions">
+      <button class="btn-sm" onclick="editRecipe({{ row.id }})">编辑</button>
+      <form method="post" action="/recipes/{{ row.id }}/delete" style="display:inline" onsubmit="return confirm('确认删除？')">
+        <button class="btn-sm btn-danger">删除</button>
+      </form>
+    </div>
+  </article>
+{% endfor %}
+{% if not rows %}
+  <p class="empty-hint">暂无配方，点击右上角「+ 新增配方」添加。</p>
+{% endif %}
+</div>
+
+<!-- 编辑悬浮窗 -->
+<div id="edit-panel" class="floating-panel" style="display:none">
+  <div class="panel-header">
+    <span>编辑配方</span>
+    <button class="panel-close" onclick="this.closest('.floating-panel').style.display='none'">&times;</button>
+  </div>
+  <form id="edit-form" class="vertical" method="post">
+    <input name="name" id="edit-name" required>
+    <select name="type" id="edit-type">
+      {% for t_id, t_label in recipe_types %}
+      <option value="{{ t_id }}">{{ t_label }}</option>
+      {% endfor %}
+    </select>
+    <textarea name="positive_prompt" id="edit-positive" rows="4"></textarea>
+    <textarea name="negative_prompt" id="edit-negative" rows="3"></textarea>
+    <textarea name="params_json" id="edit-params" rows="2"></textarea>
+    <input name="notes" id="edit-notes">
+    <button>保存修改</button>
+  </form>
+</div>
+
+<script>
+const recipesData = {
+{% for row in rows %}
+  {{ row.id }}: {
+    name: `{{ row.name|replace('`','') }}`,
+    type: `{{ row.type }}`,
+    positive_prompt: `{{ row.positive_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
+    negative_prompt: `{{ row.negative_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
+    params_json: `{{ row.params_json|replace('`','\\`') }}`,
+    notes: `{{ row.notes|replace('`','') }}`
+  },
+{% endfor %}
+};
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = '复制', 1200);
+  });
+}
+
+function editRecipe(id) {
+  const d = recipesData[id];
+  if (!d) return;
+  document.getElementById('edit-form').action = '/recipes/' + id + '/update';
+  document.getElementById('edit-name').value = d.name;
+  document.getElementById('edit-type').value = d.type;
+  document.getElementById('edit-positive').value = d.positive_prompt;
+  document.getElementById('edit-negative').value = d.negative_prompt;
+  document.getElementById('edit-params').value = d.params_json;
+  document.getElementById('edit-notes').value = d.notes;
+  document.getElementById('edit-panel').style.display = 'flex';
+}
+
+// 悬浮窗拖拽
+document.querySelectorAll('.floating-panel .panel-header').forEach(header => {
+  let isDragging = false, offsetX, offsetY;
+  header.addEventListener('mousedown', e => {
+    isDragging = true;
+    const panel = header.closest('.floating-panel');
+    offsetX = e.clientX - panel.offsetLeft;
+    offsetY = e.clientY - panel.offsetTop;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', () => { isDragging = false; document.removeEventListener('mousemove', onMove); }, {once: true});
+  });
+  function onMove(e) {
+    if (!isDragging) return;
+    const panel = header.closest('.floating-panel');
+    panel.style.left = (e.clientX - offsetX) + 'px';
+    panel.style.top = (e.clientY - offsetY) + 'px';
+    panel.style.right = 'auto';
+  }
+});
+</script>
+{% endblock %}

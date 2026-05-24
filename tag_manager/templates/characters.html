@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>角色卡</h1>
+
+<button class="btn-float" onclick="document.getElementById('add-panel').style.display='flex'">+ 新增角色</button>
+
+<!-- 新增悬浮窗 -->
+<div id="add-panel" class="floating-panel" style="display:none">
+  <div class="panel-header">
+    <span>新增角色</span>
+    <button class="panel-close" onclick="this.closest('.floating-panel').style.display='none'">&times;</button>
+  </div>
+  <form class="vertical" method="post" action="/characters/add">
+    <input name="name" placeholder="角色名" required>
+    <input name="lora" placeholder="LoRA 文件名（如 IL_花园Senera3_v1）">
+    <input name="lora_weight" type="number" step="0.1" value="1.0" placeholder="LoRA 权重">
+    <input name="trigger_words" placeholder="触发词（逗号分隔）">
+    <textarea name="appearance" rows="3" placeholder="外貌特征 tag（如 blonde hair, blue eyes, cat ears）"></textarea>
+    <input name="notes" placeholder="备注">
+    <button>保存</button>
+  </form>
+</div>
+
+<!-- 角色卡片网格 -->
+<div class="char-grid">
+{% for row in rows %}
+  <article class="char-card">
+    <div class="char-card-header">
+      <h3>{{ row.name }}</h3>
+      <div class="char-actions">
+        <button class="btn-sm" onclick="editChar({{ row.id }})">编辑</button>
+        <form method="post" action="/characters/{{ row.id }}/delete" style="display:inline" onsubmit="return confirm('删除角色「{{ row.name }}」及其所有服装？')">
+          <button class="btn-sm btn-danger">删除</button>
+        </form>
+      </div>
+    </div>
+    {% if row.lora %}
+    <div class="char-field">
+      <label>LoRA</label>
+      <span class="char-value">{{ row.lora }}:{{ row.lora_weight }}</span>
+      <button class="btn-copy" onclick="copyText(this, '<lora:{{ row.lora }}:{{ row.lora_weight }}>')">复制</button>
+    </div>
+    {% endif %}
+    {% if row.trigger_words %}
+    <div class="char-field">
+      <label>触发词</label>
+      <span class="char-value">{{ row.trigger_words }}</span>
+      <button class="btn-copy" onclick="copyText(this, '{{ row.trigger_words }}')">复制</button>
+    </div>
+    {% endif %}
+    {% if row.appearance %}
+    <div class="char-field">
+      <label>外貌</label>
+      <span class="char-value">{{ row.appearance[:120] }}{% if row.appearance|length > 120 %}...{% endif %}</span>
+      <button class="btn-copy" onclick="copyText(this, '{{ row.appearance|replace("'", "\\'") }}')">复制</button>
+    </div>
+    {% endif %}
+    {% if row.notes %}
+    <p class="char-notes">{{ row.notes }}</p>
+    {% endif %}
+
+    <!-- 服装套组 -->
+    <div class="outfit-section">
+      <div class="outfit-header">
+        <label>服装套组</label>
+        <button class="btn-sm" onclick="this.nextElementSibling.style.display='block'">+ 添加</button>
+        <form class="outfit-add-form" style="display:none" method="post" action="/characters/{{ row.id }}/outfits/add">
+          <input name="name" placeholder="套组名" required>
+          <textarea name="tags" rows="2" placeholder="服装 tag"></textarea>
+          <input name="notes" placeholder="备注">
+          <button>保存</button>
+          <button type="button" onclick="this.closest('form').style.display='none'">取消</button>
+        </form>
+      </div>
+      {% for outfit in outfit_map.get(row.id, []) %}
+      <div class="outfit-item">
+        <strong>{{ outfit.name }}</strong>
+        <span class="outfit-tags">{{ outfit.tags[:80] }}{% if outfit.tags|length > 80 %}...{% endif %}</span>
+        <button class="btn-copy" onclick="copyText(this, '{{ outfit.tags|replace("'", "\\'") }}')">复制</button>
+        <form method="post" action="/characters/{{ row.id }}/outfits/{{ outfit.id }}/delete" style="display:inline" onsubmit="return confirm('删除套组？')">
+          <button class="btn-sm btn-danger">x</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+{% endfor %}
+{% if not rows %}
+  <p class="empty-hint">暂无角色卡，点击「+ 新增角色」添加。</p>
+{% endif %}
+</div>
+
+<!-- 编辑悬浮窗 -->
+<div id="edit-panel" class="floating-panel" style="display:none">
+  <div class="panel-header">
+    <span>编辑角色</span>
+    <button class="panel-close" onclick="this.closest('.floating-panel').style.display='none'">&times;</button>
+  </div>
+  <form id="edit-form" class="vertical" method="post">
+    <input name="name" id="edit-name" required>
+    <input name="lora" id="edit-lora">
+    <input name="lora_weight" id="edit-lora-weight" type="number" step="0.1">
+    <input name="trigger_words" id="edit-trigger">
+    <textarea name="appearance" id="edit-appearance" rows="3"></textarea>
+    <input name="notes" id="edit-notes">
+    <button>保存修改</button>
+  </form>
+</div>
+
+<script>
+const charsData = {
+{% for row in rows %}
+  {{ row.id }}: {
+    name: `{{ row.name|replace('`','') }}`,
+    lora: `{{ row.lora }}`,
+    lora_weight: {{ row.lora_weight }},
+    trigger_words: `{{ row.trigger_words|replace('`','') }}`,
+    appearance: `{{ row.appearance|replace('`','\\`') }}`,
+    notes: `{{ row.notes|replace('`','') }}`
+  },
+{% endfor %}
+};
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = '复制', 1200);
+  });
+}
+
+function editChar(id) {
+  const d = charsData[id];
+  if (!d) return;
+  document.getElementById('edit-form').action = '/characters/' + id + '/update';
+  document.getElementById('edit-name').value = d.name;
+  document.getElementById('edit-lora').value = d.lora;
+  document.getElementById('edit-lora-weight').value = d.lora_weight;
+  document.getElementById('edit-trigger').value = d.trigger_words;
+  document.getElementById('edit-appearance').value = d.appearance;
+  document.getElementById('edit-notes').value = d.notes;
+  document.getElementById('edit-panel').style.display = 'flex';
+}
+
+document.querySelectorAll('.floating-panel .panel-header').forEach(header => {
+  let isDragging = false, offsetX, offsetY;
+  header.addEventListener('mousedown', e => {
+    isDragging = true;
+    const panel = header.closest('.floating-panel');
+    offsetX = e.clientX - panel.offsetLeft;
+    offsetY = e.clientY - panel.offsetTop;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', () => { isDragging = false; document.removeEventListener('mousemove', onMove); }, {once: true});
+  });
+  function onMove(e) {
+    if (!isDragging) return;
+    const panel = header.closest('.floating-panel');
+    panel.style.left = (e.clientX - offsetX) + 'px';
+    panel.style.top = (e.clientY - offsetY) + 'px';
+    panel.style.right = 'auto';
+  }
+});
+</script>
+{% endblock %}

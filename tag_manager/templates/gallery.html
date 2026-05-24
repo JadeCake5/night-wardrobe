@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>图库</h1>
+
+<div class="gallery-toolbar">
+  <form class="search" method="get">
+    <input name="q" value="{{ q }}" placeholder="搜索标题 / 提示词 / LoRA">
+    <select name="category">
+      <option value="">全部分类</option>
+      {% for c in categories %}<option value="{{ c.category }}" {% if category == c.category %}selected{% endif %}>{{ c.category }}</option>{% endfor %}
+    </select>
+    <select name="checkpoint">
+      <option value="">全部模型</option>
+      {% for c in checkpoints %}<option value="{{ c.checkpoint }}" {% if checkpoint == c.checkpoint %}selected{% endif %}>{{ c.checkpoint }}</option>{% endfor %}
+    </select>
+    <button>筛选</button>
+  </form>
+  <div class="gallery-actions">
+    <form method="post" action="/scan-gallery" style="display:inline"><button>扫描图库</button></form>
+    <form method="post" action="/gallery/export" style="display:inline"><button>导出 ZIP</button></form>
+    <form method="post" action="/gallery/import" enctype="multipart/form-data" style="display:inline">
+      <label class="btn-upload"><input type="file" name="file" accept=".zip" onchange="this.form.submit()" hidden>导入 ZIP</label>
+    </form>
+  </div>
+</div>
+
+<div class="gallery-grid">
+{% for row in rows %}
+  <article class="gallery-card">
+    <img src="/gallery-files/{{ row.path }}" alt="{{ row.title }}" draggable="true" loading="lazy" onclick="openLightbox({{ row.id }})">
+    <div class="gallery-card-info">
+      <h3>{{ row.title }}</h3>
+      {% if row.category %}<span class="gallery-badge">{{ row.category }}</span>{% endif %}
+      {% if row.checkpoint %}<span class="gallery-badge model">{{ row.checkpoint }}</span>{% endif %}
+      {% if row.loras %}<span class="gallery-badge lora">{{ row.loras[:40] }}</span>{% endif %}
+    </div>
+  </article>
+{% endfor %}
+{% if not rows %}
+  <p class="empty-hint">图库为空。将图片放入 <code>tag_manager/gallery/</code> 目录后点击「扫描图库」。</p>
+{% endif %}
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox" onclick="if(event.target===this)closeLightbox()">
+  <div class="lightbox-content">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <img id="lb-img" src="" alt="" draggable="true">
+    <div class="lightbox-details">
+      <h3 id="lb-title"></h3>
+      <div class="lb-field">
+        <label>Positive</label>
+        <pre id="lb-positive"></pre>
+        <button class="btn-copy" onclick="copyField('lb-positive')">复制</button>
+      </div>
+      <div class="lb-field">
+        <label>Negative</label>
+        <pre id="lb-negative"></pre>
+        <button class="btn-copy" onclick="copyField('lb-negative')">复制</button>
+      </div>
+      <div class="lb-meta">
+        <span id="lb-checkpoint"></span>
+        <span id="lb-loras"></span>
+      </div>
+      <p class="lb-hint">可直接拖拽图片到 ComfyUI 窗口导入工作流</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const galleryData = {
+{% for row in rows %}
+  {{ row.id }}: {
+    src: `/gallery-files/{{ row.path }}`,
+    title: `{{ row.title|replace('`','') }}`,
+    positive: `{{ row.positive_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
+    negative: `{{ row.negative_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
+    checkpoint: `{{ row.checkpoint }}`,
+    loras: `{{ row.loras|replace('`','') }}`
+  },
+{% endfor %}
+};
+
+function openLightbox(id) {
+  const d = galleryData[id];
+  if (!d) return;
+  document.getElementById('lb-img').src = d.src;
+  document.getElementById('lb-title').textContent = d.title;
+  document.getElementById('lb-positive').textContent = d.positive;
+  document.getElementById('lb-negative').textContent = d.negative;
+  document.getElementById('lb-checkpoint').textContent = d.checkpoint ? '模型: ' + d.checkpoint : '';
+  document.getElementById('lb-loras').textContent = d.loras ? 'LoRA: ' + d.loras : '';
+  document.getElementById('lightbox').classList.add('active');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+}
+
+function copyField(id) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById(id).nextElementSibling;
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = '复制', 1200);
+  });
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+</script>
+{% endblock %}

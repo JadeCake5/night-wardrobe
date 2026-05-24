@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>工坊</h1>
+
+<div class="workshop-layout">
+  <!-- 左侧选择面板 -->
+  <div class="workshop-panel">
+    <div class="ws-section">
+      <h3>角色</h3>
+      <select id="ws-char" onchange="onCharChange()">
+        <option value="">-- 选择角色 --</option>
+      </select>
+      <select id="ws-outfit" onchange="buildPrompt()" style="display:none">
+        <option value="">-- 选择服装 --</option>
+      </select>
+    </div>
+
+    <div class="ws-section">
+      <h3>画师串</h3>
+      <select id="ws-artist" onchange="buildPrompt()">
+        <option value="">-- 选择画师串 --</option>
+      </select>
+    </div>
+
+    <div class="ws-section">
+      <h3>场景预设</h3>
+      <select id="ws-scene" onchange="buildPrompt()">
+        <option value="">-- 选择场景 --</option>
+      </select>
+    </div>
+
+    <div class="ws-section">
+      <h3>负面模板</h3>
+      <select id="ws-negative" onchange="buildPrompt()">
+        <option value="">-- 选择负面模板 --</option>
+      </select>
+    </div>
+
+    <div class="ws-section">
+      <h3>自定义补充</h3>
+      <textarea id="ws-custom-pos" rows="2" placeholder="额外正面 tag（追加到末尾）" oninput="buildPrompt()"></textarea>
+      <textarea id="ws-custom-neg" rows="2" placeholder="额外负面 tag（追加到末尾）" oninput="buildPrompt()"></textarea>
+    </div>
+
+    <div class="ws-section">
+      <button class="btn-llm" onclick="optimizeWithLLM()">AI 优化提示词</button>
+    </div>
+  </div>
+
+  <!-- 右侧预览区 -->
+  <div class="workshop-preview">
+    <div class="ws-preview-block">
+      <div class="ws-preview-header">
+        <label>Positive Prompt</label>
+        <button class="btn-copy" onclick="copyPrompt('positive')">复制</button>
+      </div>
+      <pre id="ws-positive-preview" class="ws-preview-text"></pre>
+    </div>
+
+    <div class="ws-preview-block">
+      <div class="ws-preview-header">
+        <label>Negative Prompt</label>
+        <button class="btn-copy" onclick="copyPrompt('negative')">复制</button>
+      </div>
+      <pre id="ws-negative-preview" class="ws-preview-text negative"></pre>
+    </div>
+
+    <div class="ws-preview-block">
+      <div class="ws-preview-header">
+        <label>完整复制（正+负）</label>
+        <button class="btn-copy" onclick="copyBoth()">复制全部</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LLM 优化弹窗 -->
+<div id="llm-panel" class="floating-panel" style="display:none">
+  <div class="panel-header">
+    <span>AI 优化结果</span>
+    <button class="panel-close" onclick="document.getElementById('llm-panel').style.display='none'">&times;</button>
+  </div>
+  <div class="vertical" style="padding:14px 16px">
+    <pre id="llm-result" class="ws-preview-text" style="max-height:300px;overflow-y:auto"></pre>
+    <button onclick="applyLLMResult()">应用到自定义补充</button>
+  </div>
+</div>
+
+<script>
+let charsData = [];
+let recipesData = { artist_mix: [], scene: [], negative: [], params: [] };
+
+async function loadData() {
+  const [chars, recipes] = await Promise.all([
+    fetch('/api/characters').then(r => r.json()),
+    fetch('/api/recipes').then(r => r.json()),
+  ]);
+  charsData = chars;
+  recipesData = { artist_mix: [], scene: [], negative: [], params: [] };
+  recipes.forEach(r => {
+    if (recipesData[r.type]) recipesData[r.type].push(r);
+  });
+  populateSelects();
+}
+
+function populateSelects() {
+  const charSel = document.getElementById('ws-char');
+  charsData.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name + (c.lora ? ` [${c.lora}]` : '');
+    charSel.appendChild(opt);
+  });
+
+  populateRecipeSelect('ws-artist', recipesData.artist_mix);
+  populateRecipeSelect('ws-scene', recipesData.scene);
+  populateRecipeSelect('ws-negative', recipesData.negative);
+}
+
+function populateRecipeSelect(id, items) {
+  const sel = document.getElementById(id);
+  items.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = r.name;
+    sel.appendChild(opt);
+  });
+}
+
+function onCharChange() {
+  const charId = parseInt(document.getElementById('ws-char').value);
+  const outfitSel = document.getElementById('ws-outfit');
+  outfitSel.innerHTML = '<option value="">-- 选择服装 --</option>';
+  const char = charsData.find(c => c.id === charId);
+  if (char && char.outfits.length > 0) {
+    char.outfits.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.id;
+      opt.textContent = o.name;
+      outfitSel.appendChild(opt);
+    });
+    outfitSel.style.display = '';
+  } else {
+    outfitSel.style.display = 'none';
+  }
+  buildPrompt();
+}
+
+function buildPrompt() {
+  const parts = [];
+  const negParts = [];
+
+  // 角色
+  const charId = parseInt(document.getElementById('ws-char').value);
+  const char = charsData.find(c => c.id === charId);
+  if (char) {
+    if (char.lora) parts.push(`<lora:${char.lora}:${char.lora_weight}>`);
+    if (char.trigger_words) parts.push(char.trigger_words);
+    if (char.appearance) parts.push(char.appearance);
+  }
+
+  // 服装
+  const outfitId = parseInt(document.getElementById('ws-outfit').value);
+  if (char && outfitId) {
+    const outfit = char.outfits.find(o => o.id === outfitId);
+    if (outfit && outfit.tags) parts.push(outfit.tags);
+  }
+
+  // 画师串
+  const artistId = parseInt(document.getElementById('ws-artist').value);
+  const artist = recipesData.artist_mix.find(r => r.id === artistId);
+  if (artist) parts.push(artist.positive_prompt);
+
+  // 场景
+  const sceneId = parseInt(document.getElementById('ws-scene').value);
+  const scene = recipesData.scene.find(r => r.id === sceneId);
+  if (scene) {
+    if (scene.positive_prompt) parts.push(scene.positive_prompt);
+    if (scene.negative_prompt) negParts.push(scene.negative_prompt);
+  }
+
+  // 负面模板
+  const negId = parseInt(document.getElementById('ws-negative').value);
+  const neg = recipesData.negative.find(r => r.id === negId);
+  if (neg && neg.negative_prompt) negParts.push(neg.negative_prompt);
+
+  // 自定义
+  const customPos = document.getElementById('ws-custom-pos').value.trim();
+  const customNeg = document.getElementById('ws-custom-neg').value.trim();
+  if (customPos) parts.push(customPos);
+  if (customNeg) negParts.push(customNeg);
+
+  document.getElementById('ws-positive-preview').textContent = parts.join(',\n');
+  document.getElementById('ws-negative-preview').textContent = negParts.join(',\n');
+}
+
+function copyPrompt(type) {
+  const el = document.getElementById(`ws-${type}-preview`);
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = el.previousElementSibling ? el.parentElement.querySelector('.btn-copy') : null;
+    if (btn) { btn.textContent = '已复制'; setTimeout(() => btn.textContent = '复制', 1200); }
+  });
+}
+
+function copyBoth() {
+  const pos = document.getElementById('ws-positive-preview').textContent;
+  const neg = document.getElementById('ws-negative-preview').textContent;
+  const text = `Positive:\n${pos}\n\nNegative:\n${neg}`;
+  navigator.clipboard.writeText(text);
+}
+
+async function optimizeWithLLM() {
+  const pos = document.getElementById('ws-positive-preview').textContent;
+  if (!pos) { alert('请先拼装提示词'); return; }
+  const panel = document.getElementById('llm-panel');
+  const result = document.getElementById('llm-result');
+  result.textContent = '请求中...';
+  panel.style.display = 'flex';
+  try {
+    const resp = await fetch('/api/llm/optimize', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: pos}),
+    });
+    const data = await resp.json();
+    if (data.error) { result.textContent = '错误: ' + data.error; }
+    else { result.textContent = data.result; }
+  } catch(e) { result.textContent = '请求失败: ' + e.message; }
+}
+
+function applyLLMResult() {
+  const text = document.getElementById('llm-result').textContent;
+  if (text && !text.startsWith('错误') && !text.startsWith('请求')) {
+    document.getElementById('ws-custom-pos').value = text;
+    buildPrompt();
+  }
+  document.getElementById('llm-panel').style.display = 'none';
+}
+
+// 悬浮窗拖拽
+document.querySelectorAll('.floating-panel .panel-header').forEach(header => {
+  let isDragging = false, offsetX, offsetY;
+  header.addEventListener('mousedown', e => {
+    isDragging = true;
+    const panel = header.closest('.floating-panel');
+    offsetX = e.clientX - panel.offsetLeft;
+    offsetY = e.clientY - panel.offsetTop;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', () => { isDragging = false; document.removeEventListener('mousemove', onMove); }, {once: true});
+  });
+  function onMove(e) {
+    if (!isDragging) return;
+    const panel = header.closest('.floating-panel');
+    panel.style.left = (e.clientX - offsetX) + 'px';
+    panel.style.top = (e.clientY - offsetY) + 'px';
+    panel.style.right = 'auto';
+    panel.style.transform = 'none';
+  }
+});
+
+loadData();
+</script>
+{% endblock %}

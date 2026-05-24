@@ -5,7 +5,7 @@ a { color: #d8b4fe; text-decoration: none; }
 .brand { font-size: 22px; font-weight: 700; color: #f0abfc; }
 nav { display: flex; gap: 18px; flex-wrap: wrap; }
 nav a.active { color: #f0abfc; border-bottom: 2px solid #a855f7; padding-bottom: 2px; }
-main { max-width: 1280px; margin: 0 auto; padding: 28px; }
+main { max-width: 1280px; margin: 0 auto; padding: 28px; transition: opacity .15s ease; }
 .hero { padding: 32px; border-radius: 24px; background: linear-gradient(135deg, #3b1f55, #172554); }
 .cards, .actions, .grid, .split { display: grid; gap: 16px; }
 .cards { grid-template-columns: repeat(4, 1fr); margin: 18px 0; }

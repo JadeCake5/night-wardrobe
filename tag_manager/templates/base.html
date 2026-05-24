@@ -41,19 +41,23 @@
 
     async function navigate(url, pushState) {
       try {
+        main.style.opacity = '0.4';
+        main.style.pointerEvents = 'none';
         const resp = await fetch(url);
-        if (!resp.ok) return false;
+        if (!resp.ok) { main.style.opacity = '1'; main.style.pointerEvents = ''; return false; }
         const html = await resp.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const newMain = doc.querySelector('main');
-        if (!newMain) return false;
+        if (!newMain) { main.style.opacity = '1'; main.style.pointerEvents = ''; return false; }
         main.innerHTML = newMain.innerHTML;
+        main.style.opacity = '1';
+        main.style.pointerEvents = '';
         execScripts(main);
         if (pushState) history.pushState(null, '', url);
         updateActiveNav(new URL(url, location.origin).pathname);
         window.scrollTo(0, 0);
         return true;
-      } catch(e) { return false; }
+      } catch(e) { main.style.opacity = '1'; main.style.pointerEvents = ''; return false; }
     }
 
     nav.addEventListener('click', e => {

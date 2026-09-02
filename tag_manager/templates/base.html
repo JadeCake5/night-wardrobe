@@ -4,26 +4,68 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>夜之主衣柜</title>
-  <link rel="stylesheet" href="/static/style.css?v=13">
+  <link rel="stylesheet" href="/static/style.css?v=79">
 </head>
 <body>
-  <header>
-    <a class="brand" href="/">夜之主衣柜 <small>v1.0.1</small></a>
-    <nav>
-      <a href="/tags">Tag 库</a>
-      <a href="/characters">角色卡</a>
-      <a href="/recipes">配方库</a>
-      <a href="/workshop">工坊</a>
-      <a href="/gallery">图库</a>
-    </nav>
-  </header>
-  <main>
-    {% block content %}{% endblock %}
-  </main>
+  <div class="app-layout">
+    <aside class="app-sidebar">
+      <a class="brand" href="/">
+        <span class="brand-mark">NW</span>
+        <span class="brand-copy">夜之主衣柜 <small>v1.20.1</small></span>
+      </a>
+      <nav class="side-nav" data-main-nav aria-label="主导航">
+        <a class="nav-item" href="/tags" title="Tag 库">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h6v6H5zM13 5h6v6h-6zM5 13h6v6H5zM13 13h6v6h-6z"/></svg>
+          <span>Tag 库</span>
+        </a>
+        <a class="nav-item" href="/characters" title="角色卡">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0z"/></svg>
+          <span>角色卡</span>
+        </a>
+        <a class="nav-item" href="/recipes" title="配方库">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6zM9 8h6v2H9zm0 4h6v2H9zm0 4h4v2H9z"/></svg>
+          <span>配方库</span>
+        </a>
+        <a class="nav-item" href="/workshop" title="工坊">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17 15 6l3 3L7 20H4zm12-12 2-2 3 3-2 2z"/></svg>
+          <span>工坊</span>
+        </a>
+        <a class="nav-item" href="/gallery" title="图库">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zm3 10h10l-3-4-2 3-2-2zM8 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>
+          <span>图库</span>
+        </a>
+        <a class="nav-item" href="/workflows" title="工作流">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h5v4H5zm9 0h5v4h-5zM5 15h5v4H5zm9 0h5v4h-5zM10 9h4v1h-4zm-3 2v4h1v-4zm10 0v4h1v-4z"/></svg>
+          <span>工作流</span>
+        </a>
+        <a class="nav-item" href="/video-decrypt" title="视频解密">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h11v14H4zm12 4 4-3v12l-4-3zm-8 0v6l5-3z"/></svg>
+          <span>视频解密</span>
+        </a>
+        <a class="nav-item" href="/manga" title="漫画下载">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zm3 3v2h8V7zm0 4v2h8v-2zm0 4v2h5v-2z"/></svg>
+          <span>漫画下载</span>
+        </a>
+        <a class="nav-item" href="/loras" title="LoRA 库">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5zm-9 10 9 5 9-5M3 18l9 5 9-5"/></svg>
+          <span>LoRA 库</span>
+        </a>
+        <a class="nav-item" href="/gacha" title="抽卡" data-full-load>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zm4 3v4h4V7zm6 0v4h2V7zM8 13v4h2v-4zm4 0v4h4v-4z"/></svg>
+          <span>抽卡</span>
+        </a>
+      </nav>
+    </aside>
+    <div id="nav-loading" class="nav-loading">加载中...</div>
+    <main class="app-main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
   <script>
   (function() {
-    const nav = document.querySelector('header nav');
+    const nav = document.querySelector('[data-main-nav]');
     const main = document.querySelector('main');
+    const overlay = document.getElementById('nav-loading');
 
     function updateActiveNav(path) {
       nav.querySelectorAll('a').forEach(a => {
@@ -39,30 +81,66 @@
       });
     }
 
+    function saveTextareas() {
+      main.querySelectorAll('textarea[id], input[id], select[id]').forEach(el => {
+        if (el.type === 'hidden' || el.type === 'checkbox') return;
+        sessionStorage.setItem('_persist_' + el.id, el.value);
+      });
+    }
+
+    function restoreTextareas() {
+      main.querySelectorAll('textarea[id], input[id], select[id]').forEach(el => {
+        if (el.type === 'hidden' || el.type === 'checkbox') return;
+        const saved = sessionStorage.getItem('_persist_' + el.id);
+        if (saved != null) el.value = saved;
+      });
+    }
+
+    function isHeavyPage() {
+      return main.querySelectorAll('*').length > 4000;
+    }
+
+    function showOverlay() {
+      overlay.style.opacity = '1';
+      overlay.style.pointerEvents = 'auto';
+    }
+
+    function hideOverlay() {
+      overlay.style.opacity = '0';
+      overlay.style.pointerEvents = 'none';
+    }
+
     async function navigate(url, pushState) {
+      showOverlay();
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      if (typeof window.__wardrobePageCleanup === 'function') window.__wardrobePageCleanup();
+      saveTextareas();
+      const heavy = isHeavyPage();
+      if (heavy) main.textContent = '';
+
       try {
-        main.style.opacity = '0.4';
-        main.style.pointerEvents = 'none';
         const resp = await fetch(url);
-        if (!resp.ok) { main.style.opacity = '1'; main.style.pointerEvents = ''; return false; }
+        if (!resp.ok) { hideOverlay(); return false; }
         const html = await resp.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const newMain = doc.querySelector('main');
-        if (!newMain) { main.style.opacity = '1'; main.style.pointerEvents = ''; return false; }
+        if (!newMain) { hideOverlay(); return false; }
         main.innerHTML = newMain.innerHTML;
-        main.style.opacity = '1';
-        main.style.pointerEvents = '';
         execScripts(main);
+        restoreTextareas();
+        hideOverlay();
         if (pushState) history.pushState(null, '', url);
         updateActiveNav(new URL(url, location.origin).pathname);
         window.scrollTo(0, 0);
         return true;
-      } catch(e) { main.style.opacity = '1'; main.style.pointerEvents = ''; return false; }
+      } catch(e) { hideOverlay(); return false; }
     }
 
     nav.addEventListener('click', e => {
       const a = e.target.closest('a');
       if (!a || !a.getAttribute('href').startsWith('/')) return;
+      if (a.hasAttribute('data-full-load')) return;
       e.preventDefault();
       navigate(a.href, true).then(ok => { if (!ok) location.href = a.href; });
     });

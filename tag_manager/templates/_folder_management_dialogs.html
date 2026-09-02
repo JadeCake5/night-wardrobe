@@ -1,0 +1,57 @@
+<div data-folder-manager data-current-folder="{{ folder }}" data-folder-base="{{ folder_base }}">
+  <script type="application/json" data-folder-options>{{ folder_options|tojson }}</script>
+
+  <dialog class="folder-dialog" data-folder-move-dialog aria-labelledby="folder-move-title">
+    <form method="post" action="{{ folder_base }}/folders/move" data-folder-move-form>
+      <input type="hidden" name="source" data-folder-source>
+      <input type="hidden" name="current" value="{{ folder }}">
+      <div class="folder-dialog-header">
+        <div>
+          <span class="folder-dialog-eyebrow">整理文件夹</span>
+          <h2 id="folder-move-title">移动“<span data-folder-move-name></span>”</h2>
+        </div>
+        <button class="folder-dialog-close" type="button" data-folder-dialog-close aria-label="关闭">×</button>
+      </div>
+      <label class="folder-dialog-field">
+        <span>目标文件夹</span>
+        <select name="destination" data-folder-destination required></select>
+      </label>
+      <p class="folder-move-preview" data-folder-move-preview></p>
+      <p class="folder-dialog-hint">文件夹内的全部子目录与文件会一起移动，已有图库或工作流信息将保持不变。</p>
+      <div class="folder-dialog-actions">
+        <button type="button" class="btn-sm" data-folder-dialog-close>取消</button>
+        <button type="submit" data-folder-move-confirm>确认移动</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="folder-dialog folder-delete-dialog" data-folder-delete-dialog aria-labelledby="folder-delete-title">
+    <form method="post" action="{{ folder_base }}/folders/delete" data-folder-delete-form>
+      <input type="hidden" name="folder" data-folder-delete-path>
+      <input type="hidden" name="current" value="{{ folder }}">
+      <div class="folder-dialog-header">
+        <div>
+          <span class="folder-dialog-eyebrow danger">不可撤销</span>
+          <h2 id="folder-delete-title">删除“<span data-folder-delete-name></span>”</h2>
+        </div>
+        <button class="folder-dialog-close" type="button" data-folder-dialog-close aria-label="关闭">×</button>
+      </div>
+      <p class="folder-delete-warning">删除后，文件夹及其中内容会从磁盘移除，对应的图库或工作流记录也会同步清理。</p>
+      <dl class="folder-impact-grid">
+        <div><dt>子文件夹</dt><dd data-folder-count>0</dd></div>
+        <div><dt>已管理文件</dt><dd data-folder-tracked-count>0</dd></div>
+        <div><dt>其他文件</dt><dd data-folder-other-count>0</dd></div>
+      </dl>
+      <label class="folder-recursive-confirm" data-folder-recursive-wrap>
+        <input type="checkbox" name="recursive" value="true" data-folder-recursive>
+        <span>我已了解影响，确认递归删除以上全部内容</span>
+      </label>
+      <div class="folder-dialog-actions">
+        <button type="button" class="btn-sm" data-folder-dialog-close>取消</button>
+        <button type="submit" class="btn-danger" data-folder-delete-confirm>确认删除</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+
+<script src="/static/folder-management.js?v=1"></script>

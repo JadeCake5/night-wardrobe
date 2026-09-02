@@ -1,51 +1,166 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>图库</h1>
+<div class="page-head">
+  <h1>图库</h1>
+</div>
+{% if message %}<p class="notice notice-{{ message_type or 'info' }}">{{ message }}</p>{% endif %}
 
-<div class="gallery-toolbar">
-  <form class="search" method="get">
+<div class="toolbar">
+  <nav class="gallery-breadcrumbs">
+    {% for crumb in breadcrumbs %}
+      {% if not loop.last %}<a class="gallery-breadcrumb-item" href="{{ crumb.url }}" data-drop-folder="{{ crumb.folder }}">{{ crumb.name }}</a><span class="gallery-breadcrumb-separator">/</span>{% else %}<strong class="gallery-breadcrumb-item is-current" data-drop-folder="{{ crumb.folder }}">{{ crumb.name }}</strong>{% endif %}
+    {% endfor %}
+    {% if q %}<span class="gallery-breadcrumb-separator">/</span><strong class="gallery-breadcrumb-item is-current">搜索：{{ q }}</strong>{% endif %}
+  </nav>
+  <form class="search-box" method="get">
+    {% if folder and not q %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+    <span class="search-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+    </span>
     <input name="q" value="{{ q }}" placeholder="搜索标题 / 提示词 / LoRA">
-    <select name="category">
-      <option value="">全部分类</option>
-      {% for c in categories %}<option value="{{ c.category }}" {% if category == c.category %}selected{% endif %}>{{ c.category }}</option>{% endfor %}
-    </select>
-    <select name="checkpoint">
-      <option value="">全部模型</option>
-      {% for c in checkpoints %}<option value="{{ c.checkpoint }}" {% if checkpoint == c.checkpoint %}selected{% endif %}>{{ c.checkpoint }}</option>{% endfor %}
-    </select>
-    <button>筛选</button>
+    <button type="submit" class="search-go">搜索</button>
   </form>
-  <div class="gallery-actions">
-    <form method="post" action="/scan-gallery" style="display:inline"><button>扫描图库</button></form>
-    <form method="post" action="/gallery/export" style="display:inline"><button>导出 ZIP</button></form>
-    <form method="post" action="/gallery/import" enctype="multipart/form-data" style="display:inline">
-      <label class="btn-upload"><input type="file" name="file" accept=".zip" onchange="this.form.submit()" hidden>导入 ZIP</label>
+  <div class="spacer"></div>
+  <div class="icon-actions">
+    <div class="icon-pop-wrap">
+      <button type="button" class="icon-btn" data-pop-toggle="newFolderPop" title="新建文件夹" aria-label="新建文件夹">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10.5v5M9.5 13h5"/></svg>
+      </button>
+      <div class="icon-pop" id="newFolderPop" hidden>
+        <form class="icon-pop-form" method="post" action="/gallery/folders">
+          <input type="hidden" name="folder" value="{{ folder }}">
+          <input name="name" placeholder="子文件夹名称" required>
+          <button class="btn-sm">创建</button>
+        </form>
+      </div>
+    </div>
+    <form method="post" action="/gallery/upload" enctype="multipart/form-data">
+      <input type="hidden" name="folder" value="{{ folder }}">
+      <label class="icon-btn" title="上传图片（入库即时生效）" aria-label="上传图片">
+        <input type="file" name="files" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple onchange="this.form.submit()" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V5m0 0L8 9m4-4l4 4"/><path d="M5 15v2a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-2"/></svg>
+      </label>
     </form>
+    <form method="post" action="/gallery/import" enctype="multipart/form-data">
+      <input type="hidden" name="folder" value="{{ folder }}">
+      <label class="icon-btn" title="导入 ZIP（入库即时生效）" aria-label="导入 ZIP">
+        <input type="file" name="file" accept=".zip" onchange="this.form.submit()" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v10m0 0l-4-4m4 4l4-4"/><path d="M5 15v2a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-2"/></svg>
+      </label>
+    </form>
+    <form method="post" action="/scan-gallery">
+      <input type="hidden" name="folder" value="{{ folder }}">
+      <button class="icon-btn icon-scan" title="扫描图库（增量：只解析新增/变更图片）" aria-label="扫描图库">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
+      </button>
+    </form>
+    <form method="post" action="/gallery/export">
+      <button class="icon-btn" title="导出 ZIP" aria-label="导出 ZIP">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8l2-4h12l2 4"/><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M10 12h4"/></svg>
+      </button>
+    </form>
+    {% if folder %}
+    <div class="icon-pop-wrap">
+      <button type="button" class="icon-btn" data-pop-toggle="folderOpsPop" title="当前文件夹操作" aria-label="当前文件夹操作">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+      </button>
+      <div class="icon-pop icon-menu" id="folderOpsPop" hidden>
+        <button type="button" data-folder-move
+          data-folder-path="{{ current_folder_info.path }}" data-folder-name="{{ current_folder_info.name }}"
+          data-folder-count="{{ current_folder_info.folder_count }}" data-folder-tracked-count="{{ current_folder_info.tracked_file_count }}"
+          data-folder-other-count="{{ current_folder_info.other_file_count }}">移动当前文件夹</button>
+        <button type="button" class="danger" data-folder-delete
+          data-folder-path="{{ current_folder_info.path }}" data-folder-name="{{ current_folder_info.name }}"
+          data-folder-count="{{ current_folder_info.folder_count }}" data-folder-tracked-count="{{ current_folder_info.tracked_file_count }}"
+          data-folder-other-count="{{ current_folder_info.other_file_count }}">删除当前文件夹</button>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 
+{% if folders %}
+<div class="folder-grid">
+{% for item in folders %}
+  <article class="folder-card" data-folder-card data-drop-folder="{{ item.path }}">
+    <a class="folder-card-open" href="/gallery?folder={{ item.path|urlencode }}">
+      <div class="folder-cover">
+        {% if item.cover %}<img src="/gallery-files/{{ item.cover|urlpath }}" alt="{{ item.name }}" loading="lazy">{% else %}<span class="folder-icon"><span class="gallery-folder-glyph" aria-hidden="true"></span></span>{% endif %}
+      </div>
+      <div class="folder-meta">
+        <strong>{{ item.name }}</strong>
+        <span>{{ item.count }} 张图片</span>
+      </div>
+    </a>
+    <button type="button" class="folder-menu-toggle" data-folder-menu-toggle aria-expanded="false" aria-label="管理文件夹：{{ item.name }}"></button>
+    <div class="folder-card-menu is-icons" data-folder-card-menu hidden>
+      <button type="button" class="menu-icon-btn" title="移动到…" aria-label="移动到…" data-folder-move data-folder-path="{{ item.path }}" data-folder-name="{{ item.name }}"
+        data-folder-count="{{ item.folder_count }}" data-folder-tracked-count="{{ item.tracked_file_count }}" data-folder-other-count="{{ item.other_file_count }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6m0 0-2.5-2.5M15 13l-2.5 2.5"/></svg>
+      </button>
+      <button type="button" class="menu-icon-btn danger" title="删除文件夹" aria-label="删除文件夹" data-folder-delete data-folder-path="{{ item.path }}" data-folder-name="{{ item.name }}"
+        data-folder-count="{{ item.folder_count }}" data-folder-tracked-count="{{ item.tracked_file_count }}" data-folder-other-count="{{ item.other_file_count }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 12a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+      </button>
+    </div>
+  </article>
+{% endfor %}
+</div>
+{% endif %}
+
+{% set folder_base = "/gallery" %}
+{% include "_folder_management_dialogs.html" %}
+{% include "_gallery_image_dialogs.html" %}
+
 <div class="gallery-grid">
 {% for row in rows %}
-  <article class="gallery-card">
-    <img src="/gallery-files/{{ row.path }}" alt="{{ row.title }}" draggable="true" loading="lazy" onclick="openLightbox({{ row.id }})">
+  <article class="gallery-card" data-image-card data-image-id="{{ row.id }}" data-image-name="{{ row.title }}">
+    <label class="image-select" title="选择图片"><input type="checkbox" data-image-select value="{{ row.id }}"></label>
+    <img src="/gallery-files/{{ row.path|urlpath }}" alt="{{ row.title }}" draggable="true" loading="lazy" onclick="openLightbox({{ row.id }})">
     <div class="gallery-card-info">
       <h3>{{ row.title }}</h3>
       {% if row.category %}<span class="gallery-badge">{{ row.category }}</span>{% endif %}
       {% if row.checkpoint %}<span class="gallery-badge model">{{ row.checkpoint }}</span>{% endif %}
       {% if row.loras %}<span class="gallery-badge lora">{{ row.loras[:40] }}</span>{% endif %}
     </div>
+    <button type="button" class="folder-menu-toggle image-menu-toggle" data-image-menu-toggle aria-expanded="false" aria-label="管理图片：{{ row.title }}"></button>
+    <div class="folder-card-menu is-icons" data-image-card-menu hidden>
+      <button type="button" class="menu-icon-btn" title="移动到…" aria-label="移动到…" data-image-move>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6m0 0-2.5-2.5M15 13l-2.5 2.5"/></svg>
+      </button>
+      <button type="button" class="menu-icon-btn danger" title="删除图片" aria-label="删除图片" data-image-delete>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 12a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+      </button>
+    </div>
   </article>
 {% endfor %}
-{% if not rows %}
-  <p class="empty-hint">图库为空。将图片放入 <code>tag_manager/gallery/</code> 目录后点击「扫描图库」。</p>
+{% if not rows and not folders %}
+  <p class="empty-hint">{% if q %}没有找到匹配图片。{% else %}当前文件夹为空。将图片放入 <code>tag_manager/gallery/</code> 目录后点击「扫描图库」。{% endif %}</p>
 {% endif %}
+</div>
+
+<div class="image-selection-bar" data-image-selection-bar hidden>
+  <span>已选 <b data-image-selected-count>0</b> 张</span>
+  <button type="button" class="btn-sm" data-image-move-selected>移动到…</button>
+  <button type="button" class="btn-sm btn-danger" data-image-delete-selected>删除</button>
+  <button type="button" class="btn-sm" data-image-select-all>全选</button>
+  <button type="button" class="btn-sm" data-image-select-none>取消选择</button>
 </div>
 
 <!-- Lightbox -->
 <div id="lightbox" class="lightbox" onclick="if(event.target===this)closeLightbox()">
   <div class="lightbox-content">
     <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
-    <img id="lb-img" src="" alt="" draggable="true">
+    <div class="lb-viewport" id="lb-viewport">
+      <img id="lb-img" src="" alt="" draggable="true">
+      <div class="lb-zoom-bar">
+        <button type="button" onclick="lbZoomOut()" title="缩小">−</button>
+        <span id="lb-zoom-label">100%</span>
+        <button type="button" onclick="lbZoomIn()" title="放大">＋</button>
+        <button type="button" onclick="lbZoomActual()" title="实际像素">1:1</button>
+        <button type="button" onclick="lbZoomFit()" title="适应窗口">适应</button>
+      </div>
+    </div>
     <div class="lightbox-details">
       <h3 id="lb-title"></h3>
       <div class="lb-field">
@@ -61,22 +176,36 @@
       <div class="lb-meta">
         <span id="lb-checkpoint"></span>
         <span id="lb-loras"></span>
+        <span id="lb-source"></span>
       </div>
+      <div class="lb-field">
+        <label>生成参数</label>
+        <pre id="lb-params"></pre>
+        <button class="btn-copy" onclick="copyField('lb-params')">复制</button>
+      </div>
+      <details class="lb-metadata">
+        <summary>完整 Metadata</summary>
+        <pre id="lb-metadata"></pre>
+        <button class="btn-copy" onclick="copyField('lb-metadata')">复制</button>
+      </details>
       <p class="lb-hint">可直接拖拽图片到 ComfyUI 窗口导入工作流</p>
     </div>
   </div>
 </div>
 
 <script>
-const galleryData = {
+var galleryData = {
 {% for row in rows %}
   {{ row.id }}: {
-    src: `/gallery-files/{{ row.path }}`,
-    title: `{{ row.title|replace('`','') }}`,
-    positive: `{{ row.positive_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
-    negative: `{{ row.negative_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
-    checkpoint: `{{ row.checkpoint }}`,
-    loras: `{{ row.loras|replace('`','') }}`
+    src: {{ ('/gallery-files/' ~ (row.path|urlpath))|tojson }},
+    title: {{ row.title|tojson }},
+    positive: {{ row.positive_prompt|tojson }},
+    negative: {{ row.negative_prompt|tojson }},
+    checkpoint: {{ row.checkpoint|tojson }},
+    loras: {{ row.loras|tojson }},
+    parameters: {{ (row.generation_params or row.parameters)|tojson }},
+    metadata: {{ row.metadata_json|tojson }},
+    metadataSource: {{ row.metadata_source|tojson }}
   },
 {% endfor %}
 };
@@ -90,12 +219,111 @@ function openLightbox(id) {
   document.getElementById('lb-negative').textContent = d.negative;
   document.getElementById('lb-checkpoint').textContent = d.checkpoint ? '模型: ' + d.checkpoint : '';
   document.getElementById('lb-loras').textContent = d.loras ? 'LoRA: ' + d.loras : '';
+  document.getElementById('lb-source').textContent = d.metadataSource ? '来源: ' + d.metadataSource : '';
+  document.getElementById('lb-params').textContent = d.parameters || '无';
+  document.getElementById('lb-metadata').textContent = d.metadata || '无';
   document.getElementById('lightbox').classList.add('active');
 }
 
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('active');
 }
+
+// ─── Lightbox 缩放与平移：transform-origin 0 0，translate+scale 自管渲染 ───
+var lbScale = 1, lbFitScale = 1, lbTx = 0, lbTy = 0;
+var lbViewport = document.getElementById('lb-viewport');
+var lbImg = document.getElementById('lb-img');
+
+function lbComputeFit() {
+  const nw = lbImg.naturalWidth, nh = lbImg.naturalHeight;
+  if (!nw || !nh) return 1;
+  return Math.min(lbViewport.clientWidth / nw, lbViewport.clientHeight / nh);
+}
+
+function lbClamp() {
+  // 小于视口则居中；大于视口则夹取边界不露底
+  const nw = lbImg.naturalWidth, nh = lbImg.naturalHeight;
+  const w = lbViewport.clientWidth, h = lbViewport.clientHeight;
+  const iw = nw * lbScale, ih = nh * lbScale;
+  lbTx = iw <= w ? (w - iw) / 2 : Math.min(0, Math.max(w - iw, lbTx));
+  lbTy = ih <= h ? (h - ih) / 2 : Math.min(0, Math.max(h - ih, lbTy));
+}
+
+function lbApplyTransform() {
+  lbImg.style.transform = `translate(${lbTx}px, ${lbTy}px) scale(${lbScale})`;
+  document.getElementById('lb-zoom-label').textContent = Math.round(lbScale * 100) + '%';
+  // 放大态平移优先：禁用拖出到 ComfyUI；适应态恢复 draggable
+  const zoomed = lbScale > lbFitScale + 0.001;
+  lbImg.draggable = !zoomed;
+  lbViewport.classList.toggle('zoomed', zoomed);
+}
+
+function lbZoomTo(newScale, vx, vy) {
+  newScale = Math.max(lbFitScale, Math.min(8, newScale));
+  const ratio = newScale / lbScale;
+  lbTx = vx - ratio * (vx - lbTx);
+  lbTy = vy - ratio * (vy - lbTy);
+  lbScale = newScale;
+  lbClamp();
+  lbApplyTransform();
+}
+
+function lbViewportCenter() {
+  return [lbViewport.clientWidth / 2, lbViewport.clientHeight / 2];
+}
+function lbZoomIn() { const [cx, cy] = lbViewportCenter(); lbZoomTo(lbScale * 1.2, cx, cy); }
+function lbZoomOut() { const [cx, cy] = lbViewportCenter(); lbZoomTo(lbScale / 1.2, cx, cy); }
+function lbZoomActual() { const [cx, cy] = lbViewportCenter(); lbZoomTo(1, cx, cy); }
+function lbZoomFit() { const [cx, cy] = lbViewportCenter(); lbZoomTo(lbFitScale, cx, cy); }
+
+function lbResetZoom() {
+  lbFitScale = lbComputeFit();
+  lbScale = lbFitScale;
+  lbTx = 0;
+  lbTy = 0;
+  lbClamp();
+  lbApplyTransform();
+}
+lbImg.addEventListener('load', lbResetZoom);
+
+lbViewport.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = lbViewport.getBoundingClientRect();
+  lbZoomTo(lbScale * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX - rect.left, e.clientY - rect.top);
+}, { passive: false });
+
+lbViewport.addEventListener('dblclick', e => {
+  if (e.target.closest('.lb-zoom-bar')) return;
+  const rect = lbViewport.getBoundingClientRect();
+  const target = lbScale > lbFitScale + 0.001 ? lbFitScale : 1;
+  lbZoomTo(target, e.clientX - rect.left, e.clientY - rect.top);
+});
+
+var lbPanning = false, lbPanX = 0, lbPanY = 0;
+lbViewport.addEventListener('pointerdown', e => {
+  if (lbScale <= lbFitScale + 0.001 || e.target.closest('.lb-zoom-bar')) return;
+  lbPanning = true;
+  lbPanX = e.clientX;
+  lbPanY = e.clientY;
+  lbViewport.setPointerCapture(e.pointerId);
+  lbViewport.classList.add('panning');
+  e.preventDefault();
+});
+lbViewport.addEventListener('pointermove', e => {
+  if (!lbPanning) return;
+  lbTx += e.clientX - lbPanX;
+  lbTy += e.clientY - lbPanY;
+  lbPanX = e.clientX;
+  lbPanY = e.clientY;
+  lbClamp();
+  lbApplyTransform();
+});
+function lbEndPan() {
+  lbPanning = false;
+  lbViewport.classList.remove('panning');
+}
+lbViewport.addEventListener('pointerup', lbEndPan);
+lbViewport.addEventListener('pointercancel', lbEndPan);
 
 function copyField(id) {
   const text = document.getElementById(id).textContent;

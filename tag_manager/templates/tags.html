@@ -1,58 +1,84 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="tag-page" id="tagPage">
 <section class="tag-workbench">
-  <div class="tag-toolbar">
-    <div>
-      <h1>Tag 库</h1>
-      <p>展示 {{ rows|length }} / {{ shown_count }}，总计 {{ total_count }}</p>
+  <div class="page-head">
+    <h1>Tag 库</h1>
+    <p>展示 <span id="loadedTagCount">{{ loaded_count }}</span> / <span id="shownTagCount">{{ shown_count }}</span>，总计 {{ total_count }}</p>
+    <div class="page-head-actions">
+      <label class="mode-toggle" title="开启后才显示每个 tag 的编辑/删除入口"><input id="editModeToggle" type="checkbox" onchange="toggleEditMode()"><span>Tag修改</span></label>
+      <div class="tag-density-toggle">
+        <span>密度</span>
+        <button type="button" id="densityComfort" onclick="setTagDensity(false)">舒适</button>
+        <button type="button" id="densityCompact" onclick="setTagDensity(true)">紧凑</button>
+      </div>
     </div>
+  </div>
+
+  <div class="filter-dock">
     <form class="tag-search" method="get" action="/tags">
       {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
       {% if subcategory %}<input type="hidden" name="subcategory" value="{{ subcategory }}">{% endif %}
-      <input name="q" value="{{ q }}" placeholder="搜索 tag / 中文 / 备注">
-      <button>搜索</button>
+      <span class="search-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+      </span>
+      <input id="tagSearchInput" name="q" value="{{ q }}" placeholder="搜索 tag / 中文 / 备注" autocomplete="off">
+      <button type="button" class="search-clear" id="tagSearchClear" title="清除" hidden>×</button>
+      <button type="submit" class="search-go">搜索</button>
     </form>
-  </div>
 
-  <div class="prompt-ui-panel compact">
-    <div class="prompt-ui-actions">
-      <button type="button" onclick="copySelectedTags()">复制已选</button>
-      <button type="button" onclick="clearSelectedTags()">清空</button>
-      <input id="newKeyword" placeholder="手动输入新关键词" style="width: 200px; margin-left: 10px;">
-      <button type="button" onclick="toggleAddTagPanel()">+ 新增 Tag</button>
-      <label class="mode-toggle" title="开启后才显示每个 tag 的编辑/删除入口">
-        <input id="editModeToggle" type="checkbox" onchange="toggleEditMode()">
-        修改 Tag 模式
-      </label>
-    </div>
-    <textarea id="selectedTags" placeholder="点击下方 tag，会自动加入这里，用逗号分隔。"></textarea>
-  </div>
-
-  <nav class="category-bar">
+    <nav class="category-bar">
     <a class="category-tab {% if not category %}active{% endif %}" href="{{ tag_url(q=q) }}">全部</a>
     {% for item in categories %}
       <span class="category-tab-wrap">
         <a class="category-tab {% if category == item.category %}active{% endif %}" href="{{ tag_url(category=item.category, q=q) }}">
           {{ item.category }} <small>{{ item.count }}</small>
         </a>
-        <button type="button" class="tab-delete edit-only" onclick="deleteCategory('{{ item.category }}')">×</button>
+        <button type="button" class="tab-delete edit-only" data-delete-category="{{ item.category }}">×</button>
       </span>
     {% endfor %}
-    <button type="button" class="category-tab add-btn" onclick="document.getElementById('addCategoryDialog').showModal()">+ 新增分类</button>
-  </nav>
+    <button type="button" class="category-tab add-btn">+ 新增分类</button>
+    </nav>
 
-  <nav class="subcategory-bar">
+    <nav class="subcategory-bar">
     <a class="subcategory-tab {% if not subcategory %}active{% endif %}" href="{{ tag_url(category=category, q=q) }}">全部</a>
     {% for item in subcategories %}
       <span class="subcategory-tab-wrap">
         <a class="subcategory-tab {% if subcategory == item.subcategory %}active{% endif %}" href="{{ tag_url(category=category, subcategory=item.subcategory, q=q) }}">
           {{ item.subcategory }} <small>{{ item.count }}</small>
         </a>
-        <button type="button" class="tab-delete edit-only" onclick="deleteSubcategory('{{ category }}', '{{ item.subcategory }}')">×</button>
+        <button type="button" class="tab-delete edit-only" data-delete-subcategory="{{ item.subcategory }}">×</button>
       </span>
     {% endfor %}
-  </nav>
+    </nav>
+  </div>
 </section>
+
+<aside class="tag-drawer" id="tagDrawer" aria-label="已选 Tag 工作台">
+  <div class="tag-drawer-header">
+    <span class="tag-console-title">已选 Tag <span id="selectedCountBadge">0</span></span>
+    <div class="tag-console-quick">
+      <button type="button" onclick="copySelectedTags()">复制</button>
+      <button type="button" onclick="clearSelectedTags()">清空</button>
+    </div>
+  </div>
+  <div class="tag-drawer-body">
+    <div class="prompt-ui-panel compact">
+      <div class="prompt-ui-actions">
+        <div class="tag-action-group tag-action-input"><input id="newKeyword" placeholder="手动输入新关键词"><button type="button" onclick="toggleAddTagPanel()">+ 新增 Tag</button></div>
+        <div class="tag-action-group"><button type="button" onclick="normalizeSelectedTags()" title="将空格分隔的提示词统一转为逗号分隔">规范化</button></div>
+        <div class="tag-mode-group">
+          <label class="mode-toggle" title="用卡片预览已选 tag 的中文含义"><input id="previewModeToggle" type="checkbox" onchange="togglePreviewMode()"><span>Tag预览</span></label>
+        </div>
+      </div>
+      <textarea id="selectedTags" placeholder="点击右侧 tag 卡片，会自动加入这里，用逗号分隔。"></textarea>
+      <div id="selectedTagPreview" class="tag-preview-list" hidden></div>
+    </div>
+  </div>
+  <div class="tag-drawer-resizer" id="drawerResizer" title="拖动调整工作台宽度"></div>
+  <button type="button" class="tag-drawer-rail" id="drawerRailToggle" onclick="toggleTagDrawer()">收起 ▸</button>
+</aside>
+<button type="button" class="tag-drawer-fab" id="drawerFab" onclick="toggleTagDrawerOpen()">已选 <span id="drawerFabCount">0</span></button>
 
 <div id="addTagPanel" class="floating-panel hidden">
   <div class="floating-panel-header" id="addTagPanelHeader">
@@ -62,7 +88,7 @@
   <form class="labeled-form floating-panel-body" method="post" action="/tags/add">
     <label><span>英文 Tag</span><input name="tag" placeholder="例如：1girl" required></label>
     <label><span>中文显示名</span><input name="zh" placeholder="例如：1女孩"></label>
-    <label><span>一级分类</span><select name="category" required>
+    <label><span>一级分类</span><select name="category" required onchange="handleCategoryCascade(this)">
       <option value="">请选择分类</option>
       {% for item in categories %}<option value="{{ item.category }}" {% if category == item.category %}selected{% endif %}>{{ item.category }}</option>{% endfor %}
     </select></label>
@@ -94,195 +120,785 @@
 <div class="tag-grid">
 {% for row in rows %}
   <article class="tag-tile" title="{{ row.notes }} {{ row.source }}">
-    <button type="button" class="tag-button" data-tag="{{ row.tag }}" onclick="toggleTagSelection(this)">
+    <button type="button" class="tag-button" data-tag="{{ row.tag }}">
       <span class="tag-tile-zh">{{ row.zh or row.tag }}</span>
       <span class="tag-tile-en">{{ row.tag }}</span>
+      <span class="tag-meta">{{ row.category }}{% if row.subcategory %} &middot; {{ row.subcategory }}{% endif %}</span>
     </button>
-    <div class="tag-meta">
-      <span>{{ row.category }}</span>
-      {% if row.subcategory %}<span>{{ row.subcategory }}</span>{% endif %}
-    </div>
-    <details class="tag-edit edit-only">
-      <summary>编辑</summary>
-      <form class="inline-edit labeled-form" method="post" action="/tags/{{ row.id }}/update">
-        <label><span>英文 Tag</span><input name="tag" value="{{ row.tag }}"></label>
-        <label><span>中文显示名</span><input name="zh" value="{{ row.zh }}"></label>
-        <label><span>一级分类</span><select name="category">
-          {% for item in categories %}<option value="{{ item.category }}" {% if row.category == item.category %}selected{% endif %}>{{ item.category }}</option>{% endfor %}
-        </select></label>
-        <label><span>二级分类</span>
-          <select name="subcategory" onchange="handleSubcategoryNew(this)">
-            <option value="">不选择</option>
-            {% for item in subcategories %}<option value="{{ item.subcategory }}" {% if row.subcategory == item.subcategory %}selected{% endif %}>{{ item.subcategory }}</option>{% endfor %}
-            <option value="__new__">+ 新增二级分类</option>
-          </select>
-        </label>
-        <label><span>备注</span><input name="notes" value="{{ row.notes }}"></label>
-        <button>保存</button>
-        <button form="delete-{{ row.id }}">删除</button>
-      </form>
-      <form id="delete-{{ row.id }}" method="post" action="/tags/{{ row.id }}/delete"></form>
-    </details>
+    <button type="button" class="tag-edit-btn edit-only"
+            data-id="{{ row.id }}" data-tag="{{ row.tag }}" data-zh="{{ row.zh }}"
+            data-category="{{ row.category }}" data-subcategory="{{ row.subcategory }}"
+            data-notes="{{ row.notes }}">编辑</button>
   </article>
 {% endfor %}
 </div>
+<div id="tagScrollSentinel" aria-hidden="true"></div>
+
+<dialog id="tagEditModal" class="maintenance-dialog">
+  <div class="dialog-header">
+    <h3>编辑 Tag</h3>
+    <button type="button" onclick="this.closest('dialog').close()">×</button>
+  </div>
+  <form id="tagEditForm" class="labeled-form" method="post">
+    <label><span>英文 Tag</span><input name="tag" required></label>
+    <label><span>中文显示名</span><input name="zh"></label>
+    <label><span>一级分类</span><select name="category" required onchange="handleCategoryCascade(this)">
+      {% for item in categories %}<option value="{{ item.category }}">{{ item.category }}</option>{% endfor %}
+    </select></label>
+    <label><span>二级分类</span>
+      <select name="subcategory" id="editSubcategorySelect" onchange="handleSubcategoryNew(this)">
+        <option value="">不选择</option>
+        {% for item in subcategories %}<option value="{{ item.subcategory }}">{{ item.subcategory }}</option>{% endfor %}
+        <option value="__new__">+ 新增二级分类</option>
+      </select>
+    </label>
+    <label><span>备注</span><input name="notes"></label>
+    <div class="dialog-actions">
+      <button>保存</button>
+      <button type="button" class="btn-danger" onclick="deleteCurrentTag()">删除</button>
+    </div>
+  </form>
+</dialog>
+</div>
 
 <script>
-function splitTags(value) {
-  return value.split(',').map(x => x.trim()).filter(Boolean);
-}
-function syncSelectedButtons() {
-  const tags = splitTags(document.getElementById('selectedTags').value);
-  document.querySelectorAll('.tag-button').forEach(button => {
-    button.classList.toggle('selected', tags.includes(button.dataset.tag));
-  });
-}
-function writeSelectedTags(tags) {
-  document.getElementById('selectedTags').value = tags.join(', ') + (tags.length ? ', ' : '');
-  syncSelectedButtons();
-}
-function toggleTagSelection(button) {
-  const tag = button.dataset.tag;
-  const tags = splitTags(document.getElementById('selectedTags').value);
-  const index = tags.indexOf(tag);
-  if (index >= 0) {
-    tags.splice(index, 1);
-  } else {
-    tags.push(tag);
-  }
-  writeSelectedTags(tags);
-}
-function addTagToSelected(tag) {
-  const tags = splitTags(document.getElementById('selectedTags').value);
-  if (!tags.includes(tag)) tags.push(tag);
-  writeSelectedTags(tags);
-}
-async function copySelectedTags() {
-  const box = document.getElementById('selectedTags');
-  await navigator.clipboard.writeText(box.value);
-}
-function clearSelectedTags() {
-  writeSelectedTags([]);
-}
-function toggleEditMode() {
-  document.body.classList.toggle('edit-mode', document.getElementById('editModeToggle').checked);
-}
-function handleSubcategoryNew(select) {
-  if (select.value !== '__new__') return;
-  const input = document.createElement('input');
-  input.name = 'subcategory';
-  input.placeholder = '输入新的二级分类名称';
-  input.style.marginTop = '4px';
-  select.parentNode.replaceChild(input, select);
-  input.focus();
-}
-function deleteCategory(name) {
-  if (!confirm('确定删除分类「' + name + '」？该分类下的 tag 不会被删除，但分类会被清空。')) return;
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = '/categories/delete';
-  const input = document.createElement('input');
-  input.type = 'hidden'; input.name = 'name'; input.value = name;
-  form.appendChild(input);
-  document.body.appendChild(form);
-  form.submit();
-}
-function deleteSubcategory(category, subcategory) {
-  if (!confirm('确定删除二级分类「' + subcategory + '」？该分类下的 tag 不会被删除，但二级分类会被清空。')) return;
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = '/subcategories/delete';
-  const catInput = document.createElement('input');
-  catInput.type = 'hidden'; catInput.name = 'category'; catInput.value = category;
-  const subInput = document.createElement('input');
-  subInput.type = 'hidden'; subInput.name = 'subcategory'; subInput.value = subcategory;
-  form.appendChild(catInput);
-  form.appendChild(subInput);
-  document.body.appendChild(form);
-  form.submit();
-}
-function toggleAddTagPanel() {
-  const panel = document.getElementById('addTagPanel');
-  panel.classList.toggle('hidden');
-  if (!panel.classList.contains('hidden') && !panel.dataset.positioned) {
-    panel.style.top = '120px';
-    panel.style.left = (window.innerWidth - 340) / 2 + 'px';
-    panel.dataset.positioned = '1';
-  }
-}
-
 (function() {
-  const header = document.getElementById('addTagPanelHeader');
-  const panel = document.getElementById('addTagPanel');
-  let dragging = false, offsetX = 0, offsetY = 0;
-  header.addEventListener('mousedown', function(e) {
-    dragging = true;
-    offsetX = e.clientX - panel.offsetLeft;
-    offsetY = e.clientY - panel.offsetTop;
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', function(e) {
-    if (!dragging) return;
-    panel.style.left = (e.clientX - offsetX) + 'px';
-    panel.style.top = (e.clientY - offsetY) + 'px';
-  });
-  document.addEventListener('mouseup', function() { dragging = false; });
-})();
+  'use strict';
 
-document.getElementById('selectedTags').addEventListener('input', syncSelectedButtons);
-document.getElementById('newKeyword').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const val = this.value.trim();
-    if (val) {
-      addTagToSelected(val);
-      this.value = '';
+  // 页面状态全部收进 IIFE：局部导航重进时脚本整体重建，
+  // 避免全局 let/const 重复声明导致整段脚本编译失败、页面功能瘫痪。
+  var tagLookup = {
+  {% for row in rows %}
+    {{ row.tag|tojson }}: {zh: {{ row.zh|tojson }}, category: {{ row.category|tojson }}, subcategory: {{ row.subcategory|tojson }}},
+  {% endfor %}
+  };
+  var tagLookupRequest = 0;
+  var nextTagOffset = {{ next_offset }};
+  var tagPageLimit = {{ page_limit }};
+  var shownTagCount = {{ shown_count }};
+  var hasMoreTags = nextTagOffset < shownTagCount;
+  var loadingMoreTags = false;
+  var navSeq = 0;
+  var searchTimer = null;
+  var filterController = null;
+  var previewDragIndex = -1;
+  var previewDragMoved = false;
+  var selectedSet = new Set();
+  var currentQ = {{ q|tojson }};
+  var currentCategory = {{ category|tojson }};
+  var currentSubcategory = {{ subcategory|tojson }};
+  var SUBCATEGORY_MAP = {{ category_sub_map|tojson }};
+
+  var grid = document.querySelector('.tag-grid');
+  var preview = document.getElementById('selectedTagPreview');
+  var selectedBox = document.getElementById('selectedTags');
+  var categoryBar = document.querySelector('.category-bar');
+  var subcategoryBar = document.querySelector('.subcategory-bar');
+  var sentinelObserver = null;
+  var barObservers = [];
+  var teardowns = [];
+
+  // 所有事件监听统一登记，页面离开时由 __wardrobePageCleanup 一次性拆除
+  function on(target, type, handler, options) {
+    target.addEventListener(type, handler, options);
+    teardowns.push(function() { target.removeEventListener(type, handler, options); });
+  }
+
+  function escapeHTML(text) {
+    return String(text || '').replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch]));
+  }
+  function splitTags(value) {
+    return value.split(',').map(x => x.trim()).filter(Boolean);
+  }
+
+  // ─── 已选集合 ───────────────────────────────────────────────────────────
+
+  function syncSelectedButtons(root) {
+    (root || document).querySelectorAll('.tag-button').forEach(button => {
+      button.classList.toggle('selected', selectedSet.has(button.dataset.tag));
+    });
+  }
+  function updateSelectedCount() {
+    const badge = document.getElementById('selectedCountBadge');
+    if (badge) badge.textContent = String(selectedSet.size);
+    const fabCount = document.getElementById('drawerFabCount');
+    if (fabCount) fabCount.textContent = String(selectedSet.size);
+  }
+  function writeSelectedTags(tags) {
+    selectedSet = new Set(tags);
+    selectedBox.value = tags.join(', ') + (tags.length ? ', ' : '');
+    sessionStorage.setItem('wardrobe_selected_tags', tags.join(', '));
+    syncSelectedButtons();
+    renderTagPreview();
+    updateSelectedCount();
+  }
+  function toggleTagSelection(button) {
+    const tag = button.dataset.tag;
+    const tags = splitTags(selectedBox.value);
+    const index = tags.indexOf(tag);
+    if (index >= 0) {
+      tags.splice(index, 1);
+    } else {
+      tags.push(tag);
+    }
+    writeSelectedTags(tags);
+  }
+  function addTagToSelected(tag) {
+    const tags = splitTags(selectedBox.value);
+    if (!selectedSet.has(tag)) tags.push(tag);
+    writeSelectedTags(tags);
+  }
+  async function copySelectedTags() {
+    await navigator.clipboard.writeText(selectedBox.value);
+  }
+  function clearSelectedTags() {
+    writeSelectedTags([]);
+  }
+  function normalizeSelectedTags() {
+    const raw = selectedBox.value;
+    const result = [];
+    const seen = new Set();
+    const push = t => {
+      t = t.trim();
+      if (t && !seen.has(t)) { seen.add(t); result.push(t); }
+    };
+    // 先按逗号拆项;若某项是被空格黏在一起的 danbooru tag 串(含下划线,或 3 个及以上词),
+    // 再按空格拆开;否则整体保留(如 "best quality"、"high detail" 这类多词 tag 不被拆散)。
+    raw.split(',').forEach(item => {
+      const words = item.trim().split(/\s+/).filter(Boolean);
+      if (words.length >= 2 && (item.includes('_') || words.length >= 3)) {
+        words.forEach(push);
+      } else {
+        push(item);
+      }
+    });
+    writeSelectedTags(result);
+  }
+  function toggleEditMode() {
+    document.body.classList.toggle('edit-mode', document.getElementById('editModeToggle').checked);
+  }
+
+  // ─── 无限滚动：DocumentFragment 增量追加 + IntersectionObserver 哨兵 ────
+
+  function tagTileHTML(row) {
+    const meta = [row.category, row.subcategory].filter(Boolean).join(' · ');
+    return `<article class="tag-tile" title="${escapeHTML([row.notes, row.source].filter(Boolean).join(' '))}">
+    <button type="button" class="tag-button" data-tag="${escapeHTML(row.tag)}">
+      <span class="tag-tile-zh">${escapeHTML(row.zh || row.tag)}</span>
+      <span class="tag-tile-en">${escapeHTML(row.tag)}</span>
+      <span class="tag-meta">${escapeHTML(meta)}</span>
+    </button>
+    <button type="button" class="tag-edit-btn edit-only"
+            data-id="${row.id}" data-tag="${escapeHTML(row.tag)}" data-zh="${escapeHTML(row.zh || '')}"
+            data-category="${escapeHTML(row.category || '')}" data-subcategory="${escapeHTML(row.subcategory || '')}"
+            data-notes="${escapeHTML(row.notes || '')}">编辑</button>
+  </article>`;
+  }
+
+  function currentFilterParams() {
+    const params = new URLSearchParams();
+    if (currentQ) params.set('q', currentQ);
+    if (currentCategory) params.set('category', currentCategory);
+    if (currentSubcategory) params.set('subcategory', currentSubcategory);
+    return params;
+  }
+
+  async function loadMoreTags() {
+    if (loadingMoreTags || !hasMoreTags) return;
+    loadingMoreTags = true;
+    try {
+      const params = currentFilterParams();
+      params.set('offset', nextTagOffset);
+      params.set('limit', tagPageLimit);
+      const resp = await fetch('/api/tags/page?' + params.toString());
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data.rows.length) { hasMoreTags = false; return; }
+      data.rows.forEach(row => {
+        tagLookup[row.tag] = {zh: row.zh || '', category: row.category || '', subcategory: row.subcategory || ''};
+      });
+      const tpl = document.createElement('template');
+      tpl.innerHTML = data.rows.map(tagTileHTML).join('');
+      // 只同步新追加片段的选中态；已选集合未变化，无需重绘预览
+      syncSelectedButtons(tpl.content);
+      grid.appendChild(tpl.content);
+      nextTagOffset = data.next_offset;
+      hasMoreTags = data.has_more;
+      const loaded = document.getElementById('loadedTagCount');
+      if (loaded) loaded.textContent = String(nextTagOffset);
+    } finally {
+      loadingMoreTags = false;
     }
   }
-});
-syncSelectedButtons();
 
-// AJAX 分类切换
-function ajaxNavigate(url) {
-  fetch(url).then(r => r.text()).then(html => {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const newSub = doc.querySelector('.subcategory-bar');
-    const newGrid = doc.querySelector('.tag-grid');
-    const newStats = doc.querySelector('.tag-toolbar p');
-    const newCatBar = doc.querySelector('.category-bar');
-    if (newCatBar) document.querySelector('.category-bar').innerHTML = newCatBar.innerHTML;
-    if (newSub) document.querySelector('.subcategory-bar').innerHTML = newSub.innerHTML;
-    if (newGrid) document.querySelector('.tag-grid').innerHTML = newGrid.innerHTML;
-    if (newStats) document.querySelector('.tag-toolbar p').innerHTML = newStats.innerHTML;
+  // ─── 预览拖动排序 ───────────────────────────────────────────────────────
+
+  function removePreviewTag(tag) {
+    writeSelectedTags(splitTags(selectedBox.value).filter(item => item !== tag));
+  }
+  function startPreviewTagDrag(item, event) {
+    previewDragIndex = Number(item.dataset.index);
+    item.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(previewDragIndex));
+  }
+
+  function previewPositions(previewEl) {
+    return new Map(Array.from(previewEl.querySelectorAll('.tag-preview-item')).map(item => [item, item.getBoundingClientRect()]));
+  }
+
+  function animatePreviewReorder(previewEl, beforePositions) {
+    const items = Array.from(previewEl.querySelectorAll('.tag-preview-item'));
+    items.forEach(item => {
+      item.style.transition = 'none';
+      item.style.transform = '';
+    });
+    items.forEach(item => {
+      if (item.classList.contains('dragging')) return;
+      const before = beforePositions.get(item);
+      const after = item.getBoundingClientRect();
+      if (!before) return;
+      const deltaX = before.left - after.left;
+      const deltaY = before.top - after.top;
+      if (deltaX || deltaY) item.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+    });
+    void previewEl.offsetWidth;
+    requestAnimationFrame(() => {
+      items.forEach(item => {
+        item.style.transition = '';
+        item.style.transform = '';
+      });
+    });
+  }
+
+  function syncPreviewOrder(previewEl) {
+    const items = Array.from(previewEl.querySelectorAll('.tag-preview-item'));
+    const tags = items.map((item, index) => {
+      item.dataset.index = index;
+      return item.dataset.tag;
+    });
+    selectedSet = new Set(tags);
+    selectedBox.value = tags.join(', ') + (tags.length ? ', ' : '');
+    sessionStorage.setItem('wardrobe_selected_tags', tags.join(', '));
+    syncSelectedButtons();
+    updateSelectedCount();
+    previewDragIndex = items.findIndex(item => item.classList.contains('dragging'));
+  }
+
+  function movePreviewTagDrag(event) {
+    event.preventDefault();
+    const previewEl = event.currentTarget.closest('.tag-preview-list');
+    const dragged = previewEl?.querySelector('.tag-preview-item.dragging');
+    const target = event.target.closest('.tag-preview-item');
+    if (!previewEl || !dragged || target === dragged) return;
+    const items = Array.from(previewEl.querySelectorAll('.tag-preview-item'));
+    const from = items.indexOf(dragged);
+    const to = target ? items.indexOf(target) : items.length - 1;
+    if (from === to || (!target && from === items.length - 1)) return;
+    const beforePositions = previewPositions(previewEl);
+    if (!target) {
+      previewEl.appendChild(dragged);
+    } else if (from < to) {
+      target.after(dragged);
+    } else {
+      target.before(dragged);
+    }
+    previewDragMoved = true;
+    syncPreviewOrder(previewEl);
+    animatePreviewReorder(previewEl, beforePositions);
+    event.dataTransfer.dropEffect = 'move';
+  }
+
+  function endPreviewTagDrag(item) {
+    item.classList.remove('dragging');
+    previewDragIndex = -1;
+    setTimeout(() => {
+      previewDragMoved = false;
+      renderTagPreview();
+    }, 200);
+  }
+
+  function renderTagPreview() {
+    // 异步中文释义返回时不得销毁正在拖动的节点，拖动结束后会统一重绘。
+    if (!preview || previewDragIndex >= 0) return;
+    const tags = splitTags(selectedBox.value);
+    preview.innerHTML = tags.map((tag, index) => {
+      const data = tagLookup[tag];
+      const zh = data ? (data.zh || '未填写中文含义') : '查询中...';
+      const missing = data && (data.missing || !data.zh);
+      return `<button type="button" class="tag-preview-item${missing ? ' missing' : ''}" draggable="true" data-index="${index}" data-tag="${escapeHTML(tag)}" title="拖动排序，点击取消选择">
+      <span class="tag-preview-en">${escapeHTML(tag)}</span>
+      <span class="tag-preview-zh">${escapeHTML(zh)}</span>
+    </button>`;
+    }).join('');
+    lookupMissingPreviewTags(tags);
+  }
+  async function lookupMissingPreviewTags(tags) {
+    const missingTags = tags.filter(tag => tagLookup[tag] == null);
+    if (!missingTags.length) return;
+    const requestId = ++tagLookupRequest;
+    const resp = await fetch('/api/tags/lookup?q=' + encodeURIComponent(missingTags.join(',')));
+    if (!resp.ok || requestId !== tagLookupRequest) return;
+    const data = await resp.json();
+    missingTags.forEach(tag => {
+      tagLookup[tag] = data[tag] || {zh: '未收录到 Tag 库', category: '', subcategory: '', missing: true};
+    });
+    renderTagPreview();
+  }
+  function togglePreviewMode() {
+    const enabled = document.getElementById('previewModeToggle').checked;
+    // 预览框沿用编辑框调整后的高度，保持切换前后大小一致
+    const saved = localStorage.getItem('selectedTagsHeight');
+    if (saved) preview.style.height = saved;
+    selectedBox.hidden = enabled;
+    preview.hidden = !enabled;
+    sessionStorage.setItem('wardrobe_tag_preview_mode', enabled ? '1' : '0');
+    if (enabled) renderTagPreview();
+  }
+  // 依一级分类重建二级分类下拉：只列出属于该一级分类的二级分类，保留“不选择/新增”两项。
+  function buildSubcategoryOptions(select, category, preferred) {
+    const list = SUBCATEGORY_MAP[category] || [];
+    const frag = document.createDocumentFragment();
+    const optEmpty = document.createElement('option');
+    optEmpty.value = ''; optEmpty.textContent = '不选择';
+    frag.appendChild(optEmpty);
+    list.forEach(function (sc) {
+      const o = document.createElement('option');
+      o.value = sc; o.textContent = sc;
+      frag.appendChild(o);
+    });
+    const optNew = document.createElement('option');
+    optNew.value = '__new__'; optNew.textContent = '+ 新增二级分类';
+    frag.appendChild(optNew);
+    select.innerHTML = '';
+    select.appendChild(frag);
+    // 原值仍属于当前一级分类才保留，否则回到“不选择”
+    select.value = (preferred && list.indexOf(preferred) !== -1) ? preferred : '';
+  }
+  function handleCategoryCascade(catSelect) {
+    const form = catSelect.closest('form');
+    const subSelect = form && form.querySelector('select[name=subcategory]');
+    if (!subSelect) return; // 已被“+ 新增二级分类”替换为输入框时不级联
+    const cur = subSelect.value;
+    buildSubcategoryOptions(subSelect, catSelect.value, cur === '__new__' ? '' : cur);
+  }
+  function handleSubcategoryNew(select) {
+    if (select.value !== '__new__') return;
+    const input = document.createElement('input');
+    input.name = 'subcategory';
+    input.placeholder = '输入新的二级分类名称';
+    input.style.marginTop = '4px';
+    select.parentNode.replaceChild(input, select);
+    input.focus();
+  }
+
+  // ─── 编辑 / 删除弹窗 ────────────────────────────────────────────────────
+
+  // 共享编辑弹窗
+  var subcategoryTemplate = document.getElementById('editSubcategorySelect').cloneNode(true);
+
+  function openEditModal(btn) {
+    const modal = document.getElementById('tagEditModal');
+    const form = document.getElementById('tagEditForm');
+    const id = btn.dataset.id;
+    form.action = '/tags/' + id + '/update';
+    form.dataset.currentId = id;
+    form.querySelector('[name=tag]').value = btn.dataset.tag;
+    form.querySelector('[name=zh]').value = btn.dataset.zh || '';
+    form.querySelector('[name=category]').value = btn.dataset.category;
+    form.querySelector('[name=notes]').value = btn.dataset.notes || '';
+
+    // 重置 subcategory select（防止之前被替换为 input），并按当前一级分类级联选项
+    const subLabel = form.querySelector('[name=subcategory]')?.closest('label') ||
+                     form.querySelector('#editSubcategorySelect')?.closest('label');
+    if (subLabel) {
+      const fresh = subcategoryTemplate.cloneNode(true);
+      const old = subLabel.querySelector('select, input[name=subcategory]');
+      if (old) old.replaceWith(fresh);
+      buildSubcategoryOptions(fresh, btn.dataset.category, btn.dataset.subcategory || '');
+    }
+
+    modal.showModal();
+  }
+
+  function deleteCurrentTag() {
+    const id = document.getElementById('tagEditForm').dataset.currentId;
+    if (!confirm('确定删除此 tag？')) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/tags/' + id + '/delete';
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  function deleteCategory(name) {
+    if (!confirm('确定删除分类「' + name + '」？该分类下的 tag 不会被删除，但分类会被清空。')) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/categories/delete';
+    const input = document.createElement('input');
+    input.type = 'hidden'; input.name = 'name'; input.value = name;
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+  }
+  function deleteSubcategory(category, subcategory) {
+    if (!confirm('确定删除二级分类「' + subcategory + '」？该分类下的 tag 不会被删除，但二级分类会被清空。')) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/subcategories/delete';
+    const catInput = document.createElement('input');
+    catInput.type = 'hidden'; catInput.name = 'category'; catInput.value = category;
+    const subInput = document.createElement('input');
+    subInput.type = 'hidden'; subInput.name = 'subcategory'; subInput.value = subcategory;
+    form.appendChild(catInput);
+    form.appendChild(subInput);
+    document.body.appendChild(form);
+    form.submit();
+  }
+  function toggleAddTagPanel() {
+    const panel = document.getElementById('addTagPanel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+      // 打开时按当前一级分类级联二级分类选项
+      const catSelect = panel.querySelector('select[name=category]');
+      if (catSelect) handleCategoryCascade(catSelect);
+      if (!panel.dataset.positioned) {
+        panel.style.top = '90px';
+        panel.style.left = (window.innerWidth - panel.offsetWidth) / 2 + 'px';
+        panel.dataset.positioned = '1';
+      }
+    }
+  }
+
+  // ─── 筛选局部刷新：JSON 接口 + AbortController + 请求序号守卫 ──────────
+
+  function tagPageURL(category, subcategory) {
+    const params = new URLSearchParams();
+    if (currentQ) params.set('q', currentQ);
+    if (category) params.set('category', category);
+    if (subcategory) params.set('subcategory', subcategory);
+    const qs = params.toString();
+    return '/tags' + (qs ? '?' + qs : '');
+  }
+
+  function renderCategoryBar(data) {
+    let html = `<a class="category-tab${data.category ? '' : ' active'}" href="${escapeHTML(tagPageURL('', ''))}">全部</a>`;
+    data.categories.forEach(item => {
+      html += `<span class="category-tab-wrap">` +
+        `<a class="category-tab${data.category === item.category ? ' active' : ''}" href="${escapeHTML(tagPageURL(item.category, ''))}">` +
+        `${escapeHTML(item.category)} <small>${item.count}</small></a>` +
+        `<button type="button" class="tab-delete edit-only" data-delete-category="${escapeHTML(item.category)}">×</button>` +
+      `</span>`;
+    });
+    html += `<button type="button" class="category-tab add-btn">+ 新增分类</button>`;
+    categoryBar.innerHTML = html;
+  }
+
+  function renderSubcategoryBar(data) {
+    let html = `<a class="subcategory-tab${data.subcategory ? '' : ' active'}" href="${escapeHTML(tagPageURL(data.category, ''))}">全部</a>`;
+    data.subcategories.forEach(item => {
+      html += `<span class="subcategory-tab-wrap">` +
+        `<a class="subcategory-tab${data.subcategory === item.subcategory ? ' active' : ''}" href="${escapeHTML(tagPageURL(data.category, item.subcategory))}">` +
+        `${escapeHTML(item.subcategory)} <small>${item.count}</small></a>` +
+        `<button type="button" class="tab-delete edit-only" data-delete-subcategory="${escapeHTML(item.subcategory)}">×</button>` +
+      `</span>`;
+    });
+    subcategoryBar.innerHTML = html;
+  }
+
+  function renderStats(data) {
+    document.querySelector('.page-head p').innerHTML =
+      `展示 <span id="loadedTagCount">${data.next_offset}</span> / <span id="shownTagCount">${data.shown_count}</span>，总计 ${data.total_count}`;
+  }
+
+  async function ajaxNavigate(url) {
+    const seq = ++navSeq;
+    if (filterController) filterController.abort();
+    const controller = new AbortController();
+    filterController = controller;
+    const pageParams = new URL(url, location.origin).searchParams;
+    const apiParams = new URLSearchParams();
+    for (const key of ['q', 'category', 'subcategory']) {
+      const val = pageParams.get(key);
+      if (val) apiParams.set(key, val);
+    }
+    apiParams.set('limit', tagPageLimit);
+    let data;
+    try {
+      const resp = await fetch('/api/tags/filter?' + apiParams.toString(), {signal: controller.signal});
+      if (!resp.ok) return;
+      data = await resp.json();
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      throw e;
+    }
+    // 快速连续筛选时丢弃过期响应
+    if (seq !== navSeq) return;
+    currentQ = data.q;
+    currentCategory = data.category;
+    currentSubcategory = data.subcategory;
+    renderCategoryBar(data);
+    renderSubcategoryBar(data);
+    grid.innerHTML = data.rows.map(tagTileHTML).join('');
+    data.rows.forEach(row => {
+      tagLookup[row.tag] = {zh: row.zh || '', category: row.category || '', subcategory: row.subcategory || ''};
+    });
+    nextTagOffset = data.next_offset;
+    shownTagCount = data.shown_count;
+    hasMoreTags = data.has_more;
+    renderStats(data);
     history.pushState(null, '', url);
     syncSelectedButtons();
-    bindTabClicks();
     if (document.getElementById('editModeToggle').checked) {
       document.body.classList.add('edit-mode');
     }
-  });
-}
-function bindTabClicks() {
-  document.querySelectorAll('.category-tab, .subcategory-tab').forEach(a => {
-    if (a.tagName !== 'A') return;
-    a.onclick = function(e) {
-      e.preventDefault();
-      ajaxNavigate(this.href);
-    };
-  });
-}
-bindTabClicks();
-window.addEventListener('popstate', function() { location.reload(); });
+  }
 
-// 栏位高度持久化
-function saveBarHeight(key, el) {
-  new ResizeObserver(() => {
-    localStorage.setItem(key, el.style.height || el.offsetHeight + 'px');
-  }).observe(el);
-  const saved = localStorage.getItem(key);
-  if (saved) el.style.height = saved;
-}
-saveBarHeight('catBarHeight', document.querySelector('.category-bar'));
-saveBarHeight('subBarHeight', document.querySelector('.subcategory-bar'));
+  // ─── 搜索：防抖即时局部刷新 + 清除按钮 ─────────────────────────────────
+
+  function runSearch() {
+    const params = new URLSearchParams();
+    if (currentCategory) params.set('category', currentCategory);
+    if (currentSubcategory) params.set('subcategory', currentSubcategory);
+    const q = document.getElementById('tagSearchInput').value.trim();
+    if (q) params.set('q', q);
+    const qs = params.toString();
+    ajaxNavigate('/tags' + (qs ? '?' + qs : ''));
+  }
+
+  // ─── 左侧抽屉工作台 + 信息密度 ──────────────────────────────────────────
+
+  var drawer = document.getElementById('tagDrawer');
+  var drawerRailToggle = document.getElementById('drawerRailToggle');
+  var narrowDrawerQuery = window.matchMedia('(max-width: 900px)');
+
+  // 宽屏：collapsed 类收起为窄轨，body 类让主内容让位；窄屏由 CSS 强制变覆盖层
+  function applyDrawerState(collapsed) {
+    drawer.classList.toggle('collapsed', collapsed);
+    document.body.classList.toggle('tag-drawer-expanded', !collapsed);
+    drawerRailToggle.textContent = collapsed ? '展开 ◂' : '收起 ▸';
+  }
+  function toggleTagDrawer() {
+    const collapsed = !drawer.classList.contains('collapsed');
+    localStorage.setItem('wardrobe_tag_drawer', collapsed ? '1' : '0');
+    applyDrawerState(collapsed);
+  }
+  function toggleTagDrawerOpen() {
+    // 宽屏：抽屉收起后完全隐藏，悬浮球作为展开入口；窄屏：切换覆盖层 open
+    if (!narrowDrawerQuery.matches) {
+      localStorage.setItem('wardrobe_tag_drawer', '0');
+      applyDrawerState(false);
+      return;
+    }
+    drawer.classList.toggle('open');
+  }
+  // 跨断点切换时清理另一套状态类，避免让位/覆盖态串扰
+  function syncDrawerForViewport() {
+    if (narrowDrawerQuery.matches) {
+      document.body.classList.remove('tag-drawer-expanded');
+    } else {
+      drawer.classList.remove('open');
+      document.body.classList.toggle('tag-drawer-expanded', !drawer.classList.contains('collapsed'));
+    }
+  }
+
+  function setTagDensity(compact) {
+    document.getElementById('tagPage').classList.toggle('dense', compact);
+    localStorage.setItem('wardrobe_tag_density', compact ? 'compact' : 'comfort');
+    document.getElementById('densityCompact').classList.toggle('active', compact);
+    document.getElementById('densityComfort').classList.toggle('active', !compact);
+  }
+
+  // 抽屉右缘拖拽调宽（232–520px），宽度经 CSS 变量同时驱动抽屉与主内容让位
+  var DRAWER_LEFT = 110;
+  var DRAWER_MIN_WIDTH = 260;
+  var DRAWER_MAX_WIDTH = 680;
+  function setDrawerWidth(width, persist) {
+    const clamped = Math.max(DRAWER_MIN_WIDTH, Math.min(DRAWER_MAX_WIDTH, width));
+    document.documentElement.style.setProperty('--tag-drawer-width', clamped + 'px');
+    if (persist !== false) localStorage.setItem('wardrobe_tag_drawer_width', String(clamped));
+  }
+  (function() {
+    const resizer = document.getElementById('drawerResizer');
+    let dragging = false;
+    on(resizer, 'mousedown', function(e) {
+      if (narrowDrawerQuery.matches) return;
+      dragging = true;
+      e.preventDefault();
+    });
+    on(document, 'mousemove', function(e) {
+      if (!dragging) return;
+      setDrawerWidth(e.clientX - DRAWER_LEFT);
+    });
+    on(document, 'mouseup', function() { dragging = false; });
+  })();
+
+  // ─── 事件绑定（容器委托，局部刷新后无需重绑）───────────────────────────
+
+  on(grid, 'click', function(e) {
+    const editBtn = e.target.closest('.tag-edit-btn');
+    if (editBtn) { openEditModal(editBtn); return; }
+    const tagBtn = e.target.closest('.tag-button');
+    if (tagBtn) toggleTagSelection(tagBtn);
+  });
+
+  on(categoryBar, 'click', function(e) {
+    const del = e.target.closest('[data-delete-category]');
+    if (del) { deleteCategory(del.dataset.deleteCategory); return; }
+    if (e.target.closest('.add-btn')) { document.getElementById('addCategoryDialog').showModal(); return; }
+    const tab = e.target.closest('a.category-tab');
+    if (tab) { e.preventDefault(); ajaxNavigate(tab.href); }
+  });
+
+  on(subcategoryBar, 'click', function(e) {
+    const del = e.target.closest('[data-delete-subcategory]');
+    if (del) { deleteSubcategory(currentCategory, del.dataset.deleteSubcategory); return; }
+    const tab = e.target.closest('a.subcategory-tab');
+    if (tab) { e.preventDefault(); ajaxNavigate(tab.href); }
+  });
+
+  on(preview, 'click', function(e) {
+    const item = e.target.closest('.tag-preview-item');
+    if (item && !previewDragMoved) removePreviewTag(item.dataset.tag);
+  });
+  on(preview, 'dragstart', function(e) {
+    const item = e.target.closest('.tag-preview-item');
+    if (item) startPreviewTagDrag(item, e);
+  });
+  on(preview, 'dragover', movePreviewTagDrag);
+  on(preview, 'drop', function(e) {
+    movePreviewTagDrag(e);
+    e.preventDefault();
+  });
+  on(preview, 'dragend', function(e) {
+    const item = e.target.closest('.tag-preview-item');
+    if (item) endPreviewTagDrag(item);
+  });
+
+  // 新增 Tag 浮动面板拖动
+  (function() {
+    const header = document.getElementById('addTagPanelHeader');
+    const panel = document.getElementById('addTagPanel');
+    let dragging = false, offsetX = 0, offsetY = 0;
+    on(header, 'mousedown', function(e) {
+      dragging = true;
+      offsetX = e.clientX - panel.offsetLeft;
+      offsetY = e.clientY - panel.offsetTop;
+      e.preventDefault();
+    });
+    on(document, 'mousemove', function(e) {
+      if (!dragging) return;
+      panel.style.left = (e.clientX - offsetX) + 'px';
+      panel.style.top = Math.max(8, e.clientY - offsetY) + 'px';
+    });
+    on(document, 'mouseup', function() { dragging = false; });
+  })();
+
+  on(selectedBox, 'input', function() {
+    selectedSet = new Set(splitTags(selectedBox.value));
+    syncSelectedButtons();
+    renderTagPreview();
+    updateSelectedCount();
+    sessionStorage.setItem('wardrobe_selected_tags', selectedBox.value);
+  });
+  on(document.getElementById('newKeyword'), 'keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = this.value.trim();
+      if (val) {
+        addTagToSelected(val);
+        this.value = '';
+      }
+    }
+  });
+
+  const searchInput = document.getElementById('tagSearchInput');
+  const searchClear = document.getElementById('tagSearchClear');
+  on(searchInput, 'input', function() {
+    searchClear.hidden = !this.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 350);
+  });
+  on(document.querySelector('.tag-search'), 'submit', function(e) {
+    e.preventDefault();
+    clearTimeout(searchTimer);
+    runSearch();
+  });
+  on(searchClear, 'click', function() {
+    searchInput.value = '';
+    this.hidden = true;
+    clearTimeout(searchTimer);
+    runSearch();
+    searchInput.focus();
+  });
+
+  // 页尾哨兵进入视口时加载下一批，替代未节流的 scroll 监听
+  sentinelObserver = new IntersectionObserver(function(entries) {
+    if (entries.some(entry => entry.isIntersecting)) loadMoreTags();
+  }, {rootMargin: '360px 0px'});
+  sentinelObserver.observe(document.getElementById('tagScrollSentinel'));
+
+  // 栏位高度持久化（仅已选文本框/预览列表；分类栏改自适应高度后不再持久化）
+  function saveBarHeight(key, el) {
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      // 元素隐藏时 offsetHeight 为 0，跳过以免污染共享高度
+      if (!el.style.height && el.offsetHeight === 0) return;
+      localStorage.setItem(key, el.style.height || el.offsetHeight + 'px');
+    });
+    observer.observe(el);
+    barObservers.push(observer);
+    const saved = localStorage.getItem(key);
+    if (saved) el.style.height = saved;
+  }
+  saveBarHeight('selectedTagsHeight', selectedBox);
+  saveBarHeight('selectedTagsHeight', preview);
+
+  // 跨断点时同步抽屉形态
+  on(narrowDrawerQuery, 'change', syncDrawerForViewport);
+
+  // 恢复上次选择、抽屉与密度状态
+  (function() {
+    const saved = sessionStorage.getItem('wardrobe_selected_tags');
+    if (saved) selectedBox.value = saved;
+    selectedSet = new Set(splitTags(selectedBox.value));
+    syncSelectedButtons();
+    renderTagPreview();
+    updateSelectedCount();
+    const previewEnabled = sessionStorage.getItem('wardrobe_tag_preview_mode') === '1';
+    document.getElementById('previewModeToggle').checked = previewEnabled;
+    togglePreviewMode();
+    applyDrawerState(localStorage.getItem('wardrobe_tag_drawer') === '1');
+    syncDrawerForViewport();
+    const savedDrawerWidth = parseInt(localStorage.getItem('wardrobe_tag_drawer_width'), 10);
+    if (savedDrawerWidth) setDrawerWidth(savedDrawerWidth, false);
+    setTagDensity(localStorage.getItem('wardrobe_tag_density') === 'compact');
+  })();
+
+  // 静态模板内联事件引用的函数导出到全局
+  window.copySelectedTags = copySelectedTags;
+  window.clearSelectedTags = clearSelectedTags;
+  window.normalizeSelectedTags = normalizeSelectedTags;
+  window.toggleAddTagPanel = toggleAddTagPanel;
+  window.toggleTagDrawer = toggleTagDrawer;
+  window.toggleTagDrawerOpen = toggleTagDrawerOpen;
+  window.setTagDensity = setTagDensity;
+  window.togglePreviewMode = togglePreviewMode;
+  window.toggleEditMode = toggleEditMode;
+  window.handleSubcategoryNew = handleSubcategoryNew;
+  window.deleteCurrentTag = deleteCurrentTag;
+
+  // 局部导航离开前由 base.html 调用：断开 Observer、拆除监听、中止在途请求
+  window.__wardrobePageCleanup = function() {
+    if (searchTimer) clearTimeout(searchTimer);
+    if (filterController) filterController.abort();
+    if (sentinelObserver) sentinelObserver.disconnect();
+    barObservers.forEach(observer => observer.disconnect());
+    teardowns.forEach(teardown => teardown());
+    document.body.classList.remove('tag-drawer-expanded');
+    window.__wardrobePageCleanup = null;
+  };
+})();
 </script>
 {% endblock %}

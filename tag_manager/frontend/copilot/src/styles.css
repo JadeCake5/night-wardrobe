@@ -1,0 +1,407 @@
+/* Copilot Island：禁用 Tailwind Preflight，避免 reset 污染 Workshop。
+ * 交互组件源码来自 vercel/ai-elements（Apache-2.0）。
+ * 视觉必须映射到 Night Workbench：下列未分层规则用来压过全局 button/textarea。 */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+#workshop-copilot-root {
+  --background: transparent;
+  --foreground: rgba(237, 242, 255, 0.90);
+  --muted-foreground: rgba(148, 163, 184, 0.66);
+  --copilot-muted: rgba(148, 163, 184, 0.44);
+  --border: rgba(148, 163, 184, 0.10);
+  --primary: var(--accent, #a855f7);
+  --primary-foreground: #fff;
+  --secondary: rgba(30, 41, 59, 0.45);
+  --secondary-foreground: var(--foreground);
+  --composer-surface: rgba(22, 32, 56, 0.78);
+  --composer-border: rgba(148, 163, 184, 0.12);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+#workshop-copilot-root,
+#workshop-copilot-root * {
+  box-sizing: border-box;
+}
+
+#workshop-copilot-root > * {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#workshop-copilot-root [data-copilot-shell] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#workshop-copilot-root [data-copilot-shell] > [role="log"] {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#workshop-copilot-root [data-copilot-composer-area] {
+  flex: 0 0 auto;
+}
+
+#workshop-copilot-root [role="log"],
+#workshop-copilot-root [role="log"] > * {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 切断衣柜全局 button 紫色渐变 / 描边，让岛内组件接手 */
+#workshop-copilot-root button {
+  background-image: none;
+  background-color: transparent;
+  box-shadow: none;
+  transform: none;
+  border: 1px solid transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 8px;
+}
+#workshop-copilot-root button:hover {
+  transform: none;
+  box-shadow: none;
+  background-image: none;
+}
+
+/* ── Composer：完整 surface，textarea 无独立边框 ── */
+#workshop-copilot-root [data-copilot-composer-area] {
+  width: 100%;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+#workshop-copilot-root [data-copilot-composer] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--composer-border);
+  border-radius: 12px;
+  background: var(--composer-surface);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+#workshop-copilot-root [data-copilot-composer-body] {
+  width: 100%;
+  min-width: 0;
+}
+
+#workshop-copilot-root [data-copilot-composer-footer] {
+  width: 100%;
+  min-width: 0;
+  padding: 2px 8px 8px 10px;
+}
+
+#workshop-copilot-root textarea,
+#workshop-copilot-root textarea[data-copilot-input] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 108px;
+  max-height: 220px;
+  margin: 0;
+  padding: 12px 14px 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--foreground);
+  font-family: "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  resize: none;
+}
+#workshop-copilot-root textarea:focus,
+#workshop-copilot-root textarea[data-copilot-input]:focus {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+#workshop-copilot-root textarea::placeholder {
+  color: var(--copilot-muted);
+}
+
+#workshop-copilot-root [data-copilot-send] {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.28);
+  color: rgba(237, 242, 255, 0.92);
+}
+#workshop-copilot-root [data-copilot-send]:hover {
+  background: rgba(124, 58, 237, 0.42);
+  color: #fff;
+}
+#workshop-copilot-root [data-copilot-send]:disabled {
+  background: rgba(148, 163, 184, 0.08);
+  color: rgba(148, 163, 184, 0.32);
+  cursor: not-allowed;
+}
+#workshop-copilot-root [data-copilot-send] svg {
+  display: block;
+  overflow: visible;
+}
+
+.copilot-composer-hint {
+  margin: 6px 4px 0;
+  font-size: 11px;
+  line-height: 1.2;
+  color: rgba(148, 163, 184, 0.38);
+}
+
+/* ── Context：轻量 toggle，不是 outline 按钮 ── */
+#workshop-copilot-root [data-copilot-context] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--copilot-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+#workshop-copilot-root [data-copilot-context] .copilot-ctx-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: transparent;
+}
+#workshop-copilot-root [data-copilot-context][aria-pressed="true"] {
+  background: rgba(124, 58, 237, 0.12);
+  color: rgba(221, 214, 254, 0.88);
+}
+#workshop-copilot-root [data-copilot-context][aria-pressed="true"] .copilot-ctx-dot {
+  background: rgba(196, 181, 253, 0.9);
+}
+#workshop-copilot-root [data-copilot-context]:hover {
+  color: rgba(237, 242, 255, 0.72);
+  background: rgba(148, 163, 184, 0.06);
+}
+#workshop-copilot-root .copilot-ctx-sep {
+  padding: 0 1px;
+  color: rgba(148, 163, 184, 0.28);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ── Suggestion：Framer empty-state chip，默认无紫色描边 ── */
+#workshop-copilot-root [data-copilot-action],
+#workshop-copilot-root [data-copilot-more],
+#workshop-copilot-root .copilot-suggestion {
+  height: 33px;
+  padding: 0 11px;
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.06);
+  color: rgba(237, 242, 255, 0.66);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+#workshop-copilot-root [data-copilot-action]:hover,
+#workshop-copilot-root [data-copilot-more]:hover,
+#workshop-copilot-root .copilot-suggestion:hover {
+  border-color: rgba(168, 85, 247, 0.32);
+  background: rgba(124, 58, 237, 0.12);
+  color: rgba(233, 213, 255, 0.92);
+}
+#workshop-copilot-root [data-copilot-more] {
+  color: rgba(196, 181, 253, 0.72);
+}
+
+/* ── Empty / 排版层级 ── */
+#workshop-copilot-root .copilot-empty-title {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  line-height: 1.35;
+}
+#workshop-copilot-root .copilot-empty-desc {
+  margin: 0;
+  max-width: 34em;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--copilot-muted);
+}
+
+#workshop-copilot-root .copilot-ai-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--copilot-muted);
+}
+
+#workshop-copilot-root .copilot-user-block {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--foreground);
+  font-size: 12.5px;
+}
+
+#workshop-copilot-root .copilot-assistant-block {
+  color: rgba(237, 242, 255, 0.72);
+  font-size: 13px;
+}
+
+#workshop-copilot-root .copilot-turn-ctx {
+  padding: 0;
+  border: 0;
+  font-size: 10px;
+  color: var(--copilot-muted);
+}
+#workshop-copilot-root .copilot-turn-ctx + .copilot-turn-ctx::before {
+  content: "·";
+  margin-right: 4px;
+  color: rgba(148, 163, 184, 0.28);
+}
+
+/* ── 诊断 / Diff：扁平段落，不是卡片墙 ── */
+#workshop-copilot-root .copilot-section {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 0 2px;
+}
+#workshop-copilot-root .copilot-section.is-settled {
+  opacity: 0.7;
+}
+#workshop-copilot-root .copilot-section-title {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--copilot-muted);
+}
+
+#workshop-copilot-root .copilot-diag-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(237, 242, 255, 0.78);
+  font-size: 12.5px;
+  text-align: left;
+}
+#workshop-copilot-root .copilot-diag-row:hover {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+#workshop-copilot-root .copilot-diff-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: ui-monospace, Consolas, monospace;
+  cursor: pointer;
+}
+/* 类型色收敛到左侧细条 + 符号，不再有整行色块背景 */
+#workshop-copilot-root .copilot-diff-row[data-kind="add"] { box-shadow: inset 2px 0 0 rgba(52, 211, 153, 0.55); }
+#workshop-copilot-root .copilot-diff-row[data-kind="remove"] { box-shadow: inset 2px 0 0 rgba(248, 113, 113, 0.55); }
+#workshop-copilot-root .copilot-diff-row[data-kind="replace"] { box-shadow: inset 2px 0 0 rgba(196, 141, 255, 0.55); }
+#workshop-copilot-root .copilot-diff-row:hover {
+  background: rgba(148, 163, 184, 0.07);
+}
+
+/* 轻量勾选控件：压过衣柜全局 input 的 padding/border/背景块（style.css 的 input 规则） */
+#workshop-copilot-root input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: #a855f7;
+  cursor: pointer;
+  position: relative;
+  top: 1px;
+}
+
+#workshop-copilot-root .copilot-diff-reason {
+  font-family: "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+#workshop-copilot-root [data-copilot-apply] {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+#workshop-copilot-root [data-copilot-apply="checked"] {
+  border: 1px solid rgba(168, 85, 247, 0.28);
+  background: rgba(124, 58, 237, 0.22);
+  color: rgba(237, 242, 255, 0.92);
+}
+#workshop-copilot-root [data-copilot-apply="checked"]:hover {
+  background: rgba(124, 58, 237, 0.34);
+}
+#workshop-copilot-root [data-copilot-apply="all"],
+#workshop-copilot-root [data-copilot-apply="discard"] {
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  background: transparent;
+  color: var(--muted-foreground);
+}
+#workshop-copilot-root [data-copilot-apply="all"]:hover,
+#workshop-copilot-root [data-copilot-apply="discard"]:hover {
+  color: var(--foreground);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

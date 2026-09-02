@@ -1,155 +1,146 @@
-# 夜之主衣柜 (Night Wardrobe)
+# 夜之主衣柜 / Night Wardrobe
 
-Stable Diffusion / ComfyUI 提示词管理工具。管理角色卡、画师配方、提示词工坊，以及带工作流的图库案例。
+面向 Stable Diffusion / NoobAI 工作流的本地 Tag、角色卡、配方、图库与提示词工坊管理器。默认跑在本机，数据留在本机。
 
-## 功能
+当前版本：**v1.20.1**
 
-- **Tag 库** — 按一级/二级分类浏览 tag，点击即选，一键复制提示词
-- **角色卡** — 管理角色（LoRA、触发词、外貌特征、多套服装）
-- **配方库** — 可复用提示词片段：画师串、场景预设、负面模板、绘图参数
-- **工坊** — 交互式拼装提示词：选角色 → 选服装 → 选画师串 → 选场景 → 预览 → 复制
-- **图库** — 成品图橱窗，自动提取 ComfyUI 工作流和提示词，支持拖拽到 ComfyUI 导入工作流
-- **数据共享** — Tag 库 JSON 导入导出，图库 ZIP 打包分享
+## 功能亮点
+
+- **Tag 库** — 按一级 / 二级分类浏览与检索，点击即选；提供开放 API，方便其他 Agent 查询和维护
+- **角色卡** — 管理 LoRA、触发词、外观和可切换服装套组
+- **配方库** — 保存画师串、场景、负面模板和绘图参数，卡片上一键复制
+- **提示词工坊** — 组合角色、画师、场景，实时编辑 Positive / Negative Prompt
+- **工坊 Copilot** — 复用本地 LLM 设置，输出结构化诊断与 Diff；必须勾选后显式 Apply 才会写回 Prompt。支持 function-calling 只读查询 Tag 库、配方和角色卡
+- **图库** — 扫描本地图片、解析 ComfyUI / 生成元数据、按文件夹管理
+
+附加工具（按需使用，不作为核心承诺）：LoRA 库、漫画下载、视频解密、工作流库、AI 抽卡。
+
+## 界面预览
+
+以下截图来自隔离的公开示例数据（如「示例角色」、常见质量词），不含真实用户图库、私密角色卡或密钥。图库为尚未导入图片时的空态。
+
+| 工坊 | Copilot |
+| --- | --- |
+| ![提示词工坊](assets/screenshots/workshop.png) | ![工坊 Copilot](assets/screenshots/workshop-copilot.png) |
+
+| Tag 库 | 图库（空态） | 角色卡 |
+| --- | --- | --- |
+| ![Tag 库](assets/screenshots/tags.png) | ![图库空态](assets/screenshots/gallery.png) | ![角色卡](assets/screenshots/characters.png) |
+
+本地运行后可自行补拍配方库、LoRA 库等页面，保存到 `assets/screenshots/` 并用相对路径引用。
 
 ## 快速开始
 
-### 环境要求
+### 环境
 
-- Python 3.11+
+- 推荐 Python 3.11+
+- 可选：Node.js 18+（仅在修改工坊 Copilot 前端源码后需要重新构建）
 
-### 安装
+### 安装与启动
 
 ```bash
-git clone https://github.com/Shiratamakeki/night-wardrobe.git
+git clone https://github.com/JadeCake5/night-wardrobe.git
 cd night-wardrobe
 pip install -r tag_manager/requirements.txt
-```
-
-### 启动
-
-```bash
 python -m tag_manager.run
 ```
 
-浏览器打开 `http://127.0.0.1:8765`
+浏览器打开 <http://127.0.0.1:8765>
 
-### Windows 一键部署
+Windows 也可双击根目录 `start.bat`：首次运行会创建虚拟环境并安装依赖，随后启动服务。
 
-1. 双击 `tag_manager/setup_venv.bat` — 创建虚拟环境并安装依赖（仅首次）
-2. 双击 `tag_manager/start.bat` — 启动服务
+## LLM 设置
 
-## 使用指南
+1. 打开工坊，点击右上角齿轮
+2. 填写 OpenAI 兼容接口：Base URL、API Key、Model（以及可选的默认 system prompt）
+3. 保存后，工坊 Copilot 与抽卡页共用这份服务端配置
 
-### Tag 库
+密钥只写入本机 SQLite，不会进入前端源码或构建产物。Copilot 不会自动改写 Prompt：需要逐条勾选，再点「应用选中项」或「应用全部」。
 
-从 JSON 文件导入 tag 数据，或手动添加。支持按分类浏览、搜索、点击选择、一键复制。
+`/llm` 仍可作为兼容设置页，但不再作为主导航入口。
 
-### 角色卡
+## 开放 API
 
-为每个常用角色创建卡片：
-- **LoRA** — 文件名和权重
-- **触发词** — 必须携带的 tag
-- **外貌特征** — 发色、瞳色、耳朵等固定特征
-- **服装套组** — 一个角色可以有多套服装，按需切换
+- 根路径：<http://127.0.0.1:8765/api/v1>
+- 交互文档：<http://127.0.0.1:8765/docs>
+- OpenAPI：<http://127.0.0.1:8765/openapi.json>
+- 当前 **20** 个操作（`/api/v1` 下各路径的 HTTP 方法合计）
 
-### 配方库
+常用接口：
 
-保存可复用的提示词片段，分为四种类型：
-- **画师串** — 多画师权重混合配方
-- **场景预设** — 完整的动作+构图+场景组合
-- **负面模板** — 不同强度的负面提示词
-- **绘图参数** — sampler、steps、CFG、分辨率等
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/tags` | 分页查询；支持关键词、分类、评分筛选 |
+| GET | `/api/v1/tags/{id}` | 读取单条 |
+| POST | `/api/v1/tags` | 创建 |
+| PUT / PATCH / DELETE | `/api/v1/tags/{id}` | 替换、部分更新、删除 |
+| POST | `/api/v1/tags/lookup` | 按英文名批量查询，返回命中与缺失名单 |
+| POST | `/api/v1/tags/bulk-upsert` | 批量创建或覆盖，单次最多 500 条 |
+| POST | `/api/v1/tags/bulk-delete` | 按 ID 或英文名批量删除 |
+| GET / POST | `/api/v1/categories` | 列出或创建一级分类 |
+| GET / PATCH / DELETE | `/api/v1/categories/{id}` | 读取、更新、删除分类 |
+| GET | `/api/v1/subcategories` | 列出派生二级分类 |
+| POST | `/api/v1/subcategories/rename` | 重命名二级分类 |
+| POST | `/api/v1/subcategories/clear` | 清空二级分类归属 |
+| GET | `/api/v1/tag-library` | 库摘要（数量与最近更新） |
+| GET | `/api/v1/tag-library/export` | 导出完整 Tag 库 JSON |
+| POST | `/api/v1/tag-library/import` | 单事务导入或覆盖，最多 20000 条 Tag |
 
-### 工坊
+## 数据与隐私
 
-交互式拼装最终提示词：
+本项目默认只监听 `127.0.0.1`，数据保存在本机 SQLite。图库图片、工作流 JSON、LoRA 预览分别放在 `tag_manager/gallery/`、`tag_manager/workflows/`、`tag_manager/lora_previews/`。
 
-1. 选择角色（自动带入 LoRA + 触发词 + 外貌）
-2. 选择服装套组
-3. 选择画师串
-4. 选择场景预设
-5. 选择负面模板
-6. 添加自定义补充
-7. 实时预览 → 一键复制
+仓库**不包含**用户数据库、私有 Tag 库、用户图片或 API Key。请不要把这些文件提交到 Git：
 
-支持接入 LLM API 辅助优化提示词。
+- 本地 SQLite 数据库及其 WAL/SHM
+- 私有 Tag 库 JSON 导出
+- `tag_manager/gallery/`、`tag_manager/workflows/` 中的个人文件
+- LoRA 预览、漫画下载产物、视频解密配置
+- `.env` 与任何密钥文件
 
-### 图库
+`.gitignore` 已排除上述路径。克隆后首次启动会自动初始化空库。
 
-将带 ComfyUI 工作流的 PNG 图片放入 `tag_manager/gallery/` 目录：
+## 开发与测试
 
-- 首页点击「扫描图库」自动提取元数据
-- 点击图片放大查看，显示正/负提示词、模型、LoRA 信息
-- 直接从浏览器拖拽图片到 ComfyUI 窗口即可导入工作流
-- 支持 ZIP 导入导出，方便分享图库
-
-### LLM 辅助
-
-工坊内置 AI 优化按钮，接入 OpenAI 兼容 API：
-
-1. 访问 `http://127.0.0.1:8765` 首页
-2. 在工坊页面使用「AI 优化提示词」功能前，需先配置 LLM：
-
-```
-POST /llm/settings
-base_url: API 地址（如 https://api.openai.com/v1）
-api_key: 你的 API Key
-model: 模型名（如 gpt-4o）
-```
-
-## 开发模式
-
-设置环境变量启用开发功能（魔导书导入、图库扫描按钮）：
+在仓库根目录运行单元测试：
 
 ```bash
-# Linux/Mac
-WARDROBE_DEV=1 python -m tag_manager.run
-
-# Windows
-set WARDROBE_DEV=1
-python -m tag_manager.run
+python -m unittest discover -s tag_manager/tests -v
 ```
 
-## 数据存储
+核对应用版本与 `/api/v1` 操作数：
 
-- 数据库：`tag_manager/tag_wardrobe.sqlite3`（SQLite，首次启动自动创建）
-- 图库目录：`tag_manager/gallery/`
-- 导出文件：`tag_manager/tag_library.json`
-
-## 技术栈
-
-- Python 3.11+
-- FastAPI + Uvicorn
-- Jinja2 模板
-- SQLite
-- Pillow（图片元数据读取）
-- openpyxl（Excel 导入，开发模式）
-
-## 目录结构
-
+```bash
+python -c "from tag_manager.app import app; s=app.openapi(); print(app.version); print(sum(len(v) for k,v in s['paths'].items() if k.startswith('/api/v1')))"
 ```
-tag_manager/
-├── app.py              # FastAPI 路由
-├── db.py               # 数据库定义
-├── gallery.py          # 图库扫描与 ZIP 导入导出
-├── llm.py              # LLM API 调用
-├── import_magic_book.py # 魔导书 Excel 导入（开发模式）
-├── default_prompts.py  # 默认模板
-├── run.py              # 启动入口
-├── requirements.txt    # 依赖
-├── gallery/            # 图库图片目录
-├── static/
-│   └── style.css
-└── templates/
-    ├── base.html
-    ├── index.html
-    ├── tags.html
-    ├── characters.html
-    ├── recipes.html
-    ├── workshop.html
-    └── gallery.html
+
+修改工坊 Copilot 前端（`tag_manager/frontend/copilot`）后需要重新构建。仓库已包含 `tag_manager/static/copilot/` 产物，仅用 `start.bat` 或 `python -m tag_manager.run` 启动时不需要 Node：
+
+```bash
+cd tag_manager/frontend/copilot
+npm install
+npm run build
 ```
+
+## 版本
+
+**v1.20.1** 最近亮点：
+
+- 工坊 Copilot 接入真实 LLM，输出结构化诊断 / Diff
+- function-calling 只读查询 Tag 库、配方、角色卡；服务商不支持 tools 时静态降级
+- LLM 设置内嵌工坊齿轮，去掉侧栏独立「AI 设置」主入口
+- 修复 SPA 二次进入时内联脚本因顶层 `const` / `let` 失效
+- Copilot 建议列表改为紧凑可勾选列表；Apply 仍须用户显式确认
+
+## 致谢 / Credits
+
+本仓库中的 **AI 抽卡** 是集成功能，前端来自「SD Nai Newbie 抽卡 - AI 提示词生成器」。署名以集成页面 `tag_manager/static/gacha/index.html` 设置页为准：
+
+- 原项目：逐辰十七
+- 二改版：渊//愿
+
+感谢原作者与二改作者。本仓库只做本地衣柜集成（共用服务端 LLM 配置、将非敏感抽卡数据写入本机数据库等），抽卡界面本身的设计与实现归原作者所有。
 
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 Shiratamakeki

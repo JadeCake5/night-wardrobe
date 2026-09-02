@@ -2,41 +2,260 @@ from __future__ import annotations
 
 import json
 import os
-from urllib.parse import urlencode
+import re
+import sqlite3
+from pathlib import Path
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.cors import CORSMiddleware
 
+from .copilot_service import CopilotError, generate_suggestion
 from .db import BASE_DIR, PROJECT_DIR, connect, init_db, upsert_category, upsert_character, upsert_recipe, upsert_tag, add_outfit
-from .gallery import GALLERY_DIR, export_gallery_zip, import_gallery_zip, scan_gallery
+from .folder_ops import (
+    FolderInventory,
+    FolderOperationError,
+    build_folder_inventory_map,
+    delete_gallery_images,
+    delete_managed_folder,
+    list_folder_options,
+    move_gallery_images,
+    move_managed_folder,
+)
+from .gallery import GALLERY_DIR, IMAGE_EXTENSIONS, export_gallery_zip, import_gallery_zip, ingest_saved_paths, save_gallery_bytes, scan_gallery
 from .import_magic_book import import_magic_book
-from .llm import chat_completion
+from .llm import chat_completion, chat_completion_messages, list_models
+from .lora_routes import LORA_PREVIEW_DIR
+from .lora_routes import router as lora_router
+from .manga_routes import router as manga_router
+from .manga_service import manga_service
+from .tag_api import router as tag_api_router
+from .video_decrypt_routes import router as video_decrypt_router
+from .video_decrypt_service import video_decrypt_service
+from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, import_workflows_zip, save_workflow_bytes, scan_workflows
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜")
+app = FastAPI(title="夜之主衣柜", version="1.20.1")
+app.include_router(tag_api_router)
+app.include_router(video_decrypt_router)
+app.include_router(lora_router)
+app.include_router(manga_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates.env.filters["urlpath"] = lambda value: "/".join(quote(part) for part in str(value).split("/"))
 templates.env.globals["dev_mode"] = DEV_MODE
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 GALLERY_DIR.mkdir(exist_ok=True)
+WORKFLOW_DIR.mkdir(exist_ok=True)
+LORA_PREVIEW_DIR.mkdir(exist_ok=True)
 app.mount("/gallery-files", StaticFiles(directory=str(GALLERY_DIR)), name="gallery_files")
+app.mount("/workflow-files", StaticFiles(directory=str(WORKFLOW_DIR)), name="workflow_files")
+app.mount("/lora-previews", StaticFiles(directory=str(LORA_PREVIEW_DIR)), name="lora_previews")
 
 
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    scan_gallery(initialize_db=False)
+    video_decrypt_service.startup()
+    manga_service.startup()
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    video_decrypt_service.shutdown()
+    manga_service.shutdown()
 
 
 def redirect(path: str) -> RedirectResponse:
     return RedirectResponse(path, status_code=303)
 
 
+def _safe_local_next(value: str | None, default: str = "/llm") -> str:
+    """只允许站内相对路径，拒绝协议相对与外链，避免开放跳转。"""
+    if not value:
+        return default
+    path = str(value).strip()
+    if not path.startswith("/") or path.startswith("//") or path.startswith("/\\"):
+        return default
+    if "\\" in path or "://" in path:
+        return default
+    if any(ord(ch) < 32 for ch in path):
+        return default
+    return path
+
+
+def folder_url(base: str, folder: str = "", **params: str) -> str:
+    query_params = {key: value for key, value in params.items() if value}
+    folder = normalize_gallery_folder(folder)
+    if folder:
+        query_params["folder"] = folder
+    query = urlencode(query_params)
+    return f"{base}?{query}" if query else base
+
+
+def workflows_redirect(message: str = "", folder: str = "") -> RedirectResponse:
+    return redirect(folder_url("/workflows", folder, message=message))
+
+
+def managed_folder_redirect(base: str, folder: str = "", message: str = "", message_type: str = "") -> RedirectResponse:
+    return redirect(folder_url(base, folder, message=message, message_type=message_type))
+
+
+def scan_gallery_with_feedback(folder: str, busy_message: str) -> RedirectResponse | None:
+    try:
+        scan_gallery(initialize_db=False)
+    except sqlite3.OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
+        return managed_folder_redirect("/gallery", folder, busy_message, "warning")
+    return None
+
+
+def ingest_with_feedback(paths, folder: str, busy_message: str) -> RedirectResponse | None:
+    """上传/导入后只入库本次新增文件；数据库被占用时降级提示手动扫描。"""
+    try:
+        ingest_saved_paths(paths, initialize_db=False)
+    except sqlite3.OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
+        return managed_folder_redirect("/gallery", folder, busy_message, "warning")
+    return None
+
+
 def tag_url(**updates: str) -> str:
     params = {key: value for key, value in updates.items() if value}
     query = urlencode(params)
     return f"/tags?{query}" if query else "/tags"
+
+
+def normalize_gallery_folder(folder: str) -> str:
+    folder = (folder or "").replace("\\", "/").strip("/")
+    parts = [part for part in folder.split("/") if part]
+    if any(part == ".." for part in parts):
+        return ""
+    return "/".join(parts)
+
+
+def folder_breadcrumbs(folder: str, root_name: str, root_url: str) -> list[dict[str, str]]:
+    crumbs = [{"name": root_name, "url": root_url, "folder": ""}]
+    current: list[str] = []
+    for part in normalize_gallery_folder(folder).split("/"):
+        if not part:
+            continue
+        current.append(part)
+        crumbs.append({"name": part, "url": root_url + "?" + urlencode({"folder": "/".join(current)}), "folder": "/".join(current)})
+    return crumbs
+
+
+def gallery_breadcrumbs(folder: str) -> list[dict[str, str]]:
+    return folder_breadcrumbs(folder, "图库", "/gallery")
+
+
+def workflow_breadcrumbs(folder: str) -> list[dict[str, str]]:
+    return folder_breadcrumbs(folder, "工作流", "/workflows")
+
+
+def is_direct_child_path(path: str, folder: str) -> bool:
+    folder = normalize_gallery_folder(folder)
+    if not folder:
+        return "/" not in path
+    prefix = folder + "/"
+    if not path.startswith(prefix):
+        return False
+    return "/" not in path[len(prefix):]
+
+
+def is_direct_child_image(path: str, folder: str) -> bool:
+    return is_direct_child_path(path, folder)
+
+
+def build_path_folders(paths: list[str], folder: str, cover: bool = True) -> list[dict[str, str | int]]:
+    folder = normalize_gallery_folder(folder)
+    prefix = folder + "/" if folder else ""
+    folders: dict[str, dict[str, str | int]] = {}
+    for path in paths:
+        if not path.startswith(prefix):
+            continue
+        rest = path[len(prefix):]
+        if "/" not in rest:
+            continue
+        name = rest.split("/", 1)[0]
+        full_path = f"{prefix}{name}" if prefix else name
+        item = folders.setdefault(name, {"name": name, "path": full_path, "count": 0, "cover": path if cover else ""})
+        item["count"] = int(item["count"]) + 1
+    return sorted(folders.values(), key=lambda item: str(item["name"]).lower())
+
+
+def build_gallery_folders(paths: list[str], folder: str) -> list[dict[str, str | int]]:
+    return build_path_folders(paths, folder)
+
+
+def build_workflow_folders(paths: list[str], folder: str) -> list[dict[str, str | int]]:
+    return build_path_folders(paths, folder, cover=False)
+
+
+def safe_child_folder_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        raise ValueError("文件夹名称不合法")
+    name = re.sub(r'[\\/:*?"<>|]+', "_", name).strip("._ ")
+    if not name:
+        raise ValueError("文件夹名称不合法")
+    return name
+
+
+def safe_folder_target(root: Path, folder: str) -> Path:
+    root = root.resolve()
+    folder = normalize_gallery_folder(folder)
+    target = (root / folder).resolve() if folder else root
+    if target != root and root not in target.parents:
+        raise ValueError("文件夹路径不合法")
+    return target
+
+
+def merge_filesystem_folders(
+    root: Path,
+    folder: str,
+    folders: list[dict[str, str | int]],
+    inventory_map: dict[str, FolderInventory] | None = None,
+) -> list[dict[str, str | int | bool]]:
+    folder = normalize_gallery_folder(folder)
+    prefix = folder + "/" if folder else ""
+    merged = {str(item["name"]): dict(item) for item in folders}
+    current = safe_folder_target(root, folder)
+    if current.exists():
+        for child in current.iterdir():
+            if not child.is_dir():
+                continue
+            name = child.name
+            merged.setdefault(name, {"name": name, "path": f"{prefix}{name}" if prefix else name, "count": 0, "cover": ""})
+    inventory_map = inventory_map or build_folder_inventory_map(root, set())
+    for item in merged.values():
+        inventory = inventory_map.get(str(item["path"]), FolderInventory())
+        item.update(inventory.as_dict())
+        item["count"] = inventory.tracked_file_count
+    return sorted(merged.values(), key=lambda item: str(item["name"]).lower())
+
+
+def current_folder_info(folder: str, inventory_map: dict[str, FolderInventory]) -> dict[str, str | int | bool]:
+    folder = normalize_gallery_folder(folder)
+    inventory = inventory_map.get(folder, FolderInventory())
+    parent = ""
+    name = ""
+    if folder:
+        name = folder.rsplit("/", 1)[-1]
+        parent = folder.rsplit("/", 1)[0] if "/" in folder else ""
+    return {"path": folder, "name": name, "parent": parent, **inventory.as_dict()}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -47,6 +266,7 @@ def index(request: Request):
             "characters": conn.execute("SELECT COUNT(*) FROM characters").fetchone()[0],
             "recipes": conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0],
             "images": conn.execute("SELECT COUNT(*) FROM gallery_images").fetchone()[0],
+            "workflows": conn.execute("SELECT COUNT(*) FROM workflows").fetchone()[0],
         }
         recent_images = conn.execute("SELECT * FROM gallery_images ORDER BY updated_at DESC LIMIT 8").fetchall()
     return templates.TemplateResponse("index.html", {"request": request, "stats": stats, "recent_images": recent_images})
@@ -58,11 +278,12 @@ def import_magic_book_route():
     return redirect("/tags")
 
 
-@app.get("/tags", response_class=HTMLResponse)
-def tags(request: Request, q: str = "", category: str = "", subcategory: str = ""):
+def get_tag_rows(q: str = "", category: str = "", subcategory: str = "", offset: int = 0, limit: int = 80):
+    limit = max(20, min(limit, 200))
+    offset = max(0, offset)
     query = "SELECT * FROM tags WHERE 1=1"
     count_query = "SELECT COUNT(*) FROM tags WHERE 1=1"
-    params: list[str] = []
+    params: list[str | int] = []
     count_params: list[str] = []
     if q:
         query += " AND (tag LIKE ? OR zh LIKE ? OR notes LIKE ?)"
@@ -80,32 +301,65 @@ def tags(request: Request, q: str = "", category: str = "", subcategory: str = "
         count_query += " AND subcategory = ?"
         params.append(subcategory)
         count_params.append(subcategory)
-    query += " ORDER BY rating DESC, category, subcategory, tag LIMIT 500"
+    query += " ORDER BY rating DESC, category, subcategory, tag LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    return query, count_query, params, count_params, offset, limit
+
+
+def get_tags_page_data(conn, q: str, category: str, subcategory: str, offset: int, limit: int):
+    """装配 Tag 页首屏数据，/tags 页面与 /api/tags/filter 接口共用同一数据路径。"""
+    query, count_query, params, count_params, offset, limit = get_tag_rows(q, category, subcategory, offset, limit)
+    rows = conn.execute(query, params).fetchall()
+    shown_count = conn.execute(count_query, count_params).fetchone()[0]
+    total_count = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
+    categories = conn.execute(
+        """
+        SELECT c.name AS category, COUNT(t.id) AS count
+        FROM categories c
+        LEFT JOIN tags t ON t.category = c.name
+        WHERE c.kind IN ('tag', 'both')
+        GROUP BY c.name, c.sort_order
+        ORDER BY c.sort_order, c.name
+        """
+    ).fetchall()
+    subcategories = conn.execute(
+        """
+        SELECT COALESCE(NULLIF(subcategory, ''), '未分类') AS subcategory, COUNT(*) AS count
+        FROM tags
+        WHERE (? = '' OR category = ?)
+          AND (? = '' OR tag LIKE ? OR zh LIKE ? OR notes LIKE ?)
+        GROUP BY COALESCE(NULLIF(subcategory, ''), '未分类')
+        ORDER BY MIN(id)
+        """,
+        (category, category, q, f"%{q}%", f"%{q}%", f"%{q}%"),
+    ).fetchall()
+    return rows, shown_count, total_count, categories, subcategories
+
+
+def get_category_subcategory_map(conn):
+    """一级分类 → 该分类下全部二级分类（有序）的映射，供 Tag 编辑/新增表单级联。"""
+    rows = conn.execute(
+        """
+        SELECT category, subcategory, MIN(id) AS first_id
+        FROM tags
+        WHERE category != '' AND subcategory != ''
+        GROUP BY category, subcategory
+        ORDER BY category, first_id
+        """
+    ).fetchall()
+    mapping = {}
+    for r in rows:
+        mapping.setdefault(r["category"], []).append(r["subcategory"])
+    return mapping
+
+
+@app.get("/tags", response_class=HTMLResponse)
+def tags(request: Request, q: str = "", category: str = "", subcategory: str = "", offset: int = 0, limit: int = 80):
     with connect() as conn:
-        rows = conn.execute(query, params).fetchall()
-        shown_count = conn.execute(count_query, count_params).fetchone()[0]
-        total_count = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
-        categories = conn.execute(
-            """
-            SELECT c.name AS category, COUNT(t.id) AS count
-            FROM categories c
-            LEFT JOIN tags t ON t.category = c.name
-            WHERE c.kind IN ('tag', 'both')
-            GROUP BY c.name, c.sort_order
-            ORDER BY c.sort_order, c.name
-            """
-        ).fetchall()
-        subcategories = conn.execute(
-            """
-            SELECT COALESCE(NULLIF(subcategory, ''), '未分类') AS subcategory, COUNT(*) AS count
-            FROM tags
-            WHERE (? = '' OR category = ?)
-              AND (? = '' OR tag LIKE ? OR zh LIKE ? OR notes LIKE ?)
-            GROUP BY COALESCE(NULLIF(subcategory, ''), '未分类')
-            ORDER BY MIN(id)
-            """,
-            (category, category, q, f"%{q}%", f"%{q}%", f"%{q}%"),
-        ).fetchall()
+        rows, shown_count, total_count, categories, subcategories = get_tags_page_data(
+            conn, q, category, subcategory, offset, limit
+        )
+        category_sub_map = get_category_subcategory_map(conn)
     return templates.TemplateResponse(
         "tags.html",
         {
@@ -116,7 +370,11 @@ def tags(request: Request, q: str = "", category: str = "", subcategory: str = "
             "subcategory": subcategory,
             "categories": categories,
             "subcategories": subcategories,
+            "category_sub_map": category_sub_map,
             "shown_count": shown_count,
+            "loaded_count": offset + len(rows),
+            "next_offset": offset + len(rows),
+            "page_limit": max(20, min(limit, 200)),
             "total_count": total_count,
             "tag_url": tag_url,
         },
@@ -184,15 +442,18 @@ def export_tags():
         categories = [dict(r) for r in conn.execute("SELECT name, kind, sort_order, notes FROM categories ORDER BY sort_order, name").fetchall()]
         tags = [dict(r) for r in conn.execute("SELECT tag, zh, category, subcategory, source, rating, notes FROM tags ORDER BY category, subcategory, tag").fetchall()]
     data = {"categories": categories, "tags": tags}
-    TAG_LIBRARY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return redirect("/")
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=tag_library.json"},
+    )
 
 
 @app.post("/import-tags")
-def import_tags():
-    if not TAG_LIBRARY_PATH.exists():
-        return redirect("/")
-    data = json.loads(TAG_LIBRARY_PATH.read_text(encoding="utf-8"))
+async def import_tags(file: UploadFile = File(...)):
+    content = await file.read()
+    data = json.loads(content.decode("utf-8"))
     for cat in data.get("categories", []):
         upsert_category(name=cat["name"], kind=cat.get("kind", "tag"), sort_order=cat.get("sort_order", 0), notes=cat.get("notes", ""))
     for t in data.get("tags", []):
@@ -201,34 +462,151 @@ def import_tags():
 
 
 @app.get("/gallery", response_class=HTMLResponse)
-def gallery(request: Request, q: str = "", category: str = "", checkpoint: str = ""):
+def gallery(
+    request: Request,
+    q: str = "",
+    category: str = "",
+    checkpoint: str = "",
+    folder: str = "",
+    message: str = "",
+    message_type: str = "",
+):
+    folder = normalize_gallery_folder(folder)
+    inventory_map = build_folder_inventory_map(GALLERY_DIR, IMAGE_EXTENSIONS)
     query = "SELECT * FROM gallery_images WHERE 1=1"
     params: list[str] = []
     if q:
-        query += " AND (title LIKE ? OR category LIKE ? OR positive_prompt LIKE ? OR loras LIKE ? OR notes LIKE ?)"
+        query += " AND (title LIKE ? OR path LIKE ? OR category LIKE ? OR positive_prompt LIKE ? OR loras LIKE ? OR notes LIKE ?)"
         like = f"%{q}%"
-        params.extend([like, like, like, like, like])
+        params.extend([like, like, like, like, like, like])
     if category:
         query += " AND category = ?"
         params.append(category)
     if checkpoint:
         query += " AND checkpoint LIKE ?"
         params.append(f"%{checkpoint}%")
-    query += " ORDER BY updated_at DESC LIMIT 120"
+    query += " ORDER BY updated_at DESC LIMIT 200"
     with connect() as conn:
-        rows = conn.execute(query, params).fetchall()
+        all_paths = [r["path"] for r in conn.execute("SELECT path FROM gallery_images ORDER BY path").fetchall()]
+        if q:
+            rows = conn.execute(query, params).fetchall()
+            folders = []
+        else:
+            rows = [r for r in conn.execute(query, params).fetchall() if is_direct_child_image(r["path"], folder)]
+            folders = merge_filesystem_folders(GALLERY_DIR, folder, build_gallery_folders(all_paths, folder), inventory_map)
         categories = conn.execute("SELECT DISTINCT category FROM gallery_images WHERE category != '' ORDER BY category").fetchall()
         checkpoints = conn.execute("SELECT DISTINCT checkpoint FROM gallery_images WHERE checkpoint != '' ORDER BY checkpoint").fetchall()
     return templates.TemplateResponse(
         "gallery.html",
-        {"request": request, "rows": rows, "q": q, "category": category, "checkpoint": checkpoint, "categories": categories, "checkpoints": checkpoints},
+        {
+            "request": request,
+            "rows": rows,
+            "folders": folders,
+            "folder": folder,
+            "breadcrumbs": gallery_breadcrumbs(folder),
+            "q": q,
+            "category": category,
+            "checkpoint": checkpoint,
+            "categories": categories,
+            "checkpoints": checkpoints,
+            "folder_options": list_folder_options(GALLERY_DIR, inventory_map=inventory_map),
+            "current_folder_info": current_folder_info(folder, inventory_map),
+            "message": message,
+            "message_type": message_type,
+        },
     )
 
 
 @app.post("/scan-gallery")
-def scan_gallery_route():
-    scan_gallery()
-    return redirect("/gallery")
+def scan_gallery_route(folder: str = Form("")):
+    folder = normalize_gallery_folder(folder)
+    busy_response = scan_gallery_with_feedback(folder, "图库数据库正被其他任务占用，请稍后重试。")
+    if busy_response:
+        return busy_response
+    return redirect(folder_url("/gallery", folder))
+
+
+@app.post("/gallery/folders")
+def gallery_create_folder(folder: str = Form(""), name: str = Form("")):
+    folder = normalize_gallery_folder(folder)
+    child = safe_child_folder_name(name)
+    target_folder = f"{folder}/{child}" if folder else child
+    safe_folder_target(GALLERY_DIR, target_folder).mkdir(parents=True, exist_ok=True)
+    return redirect(folder_url("/gallery", target_folder))
+
+
+@app.post("/gallery/folders/move")
+def gallery_move_folder(source: str = Form(...), destination: str = Form(""), current: str = Form("")):
+    current = normalize_gallery_folder(current)
+    try:
+        result = move_managed_folder(
+            GALLERY_DIR,
+            "gallery_images",
+            source,
+            destination,
+            tracked_extensions=IMAGE_EXTENSIONS,
+        )
+    except FolderOperationError as exc:
+        return managed_folder_redirect("/gallery", current, f"移动失败：{exc}", "error")
+    next_folder = result.target if current == result.source else current
+    return managed_folder_redirect("/gallery", next_folder, f"已移动文件夹「{result.source}」", "success")
+
+
+@app.post("/gallery/folders/delete")
+def gallery_delete_folder(folder: str = Form(...), current: str = Form(""), recursive: bool = Form(False)):
+    current = normalize_gallery_folder(current)
+    try:
+        result = delete_managed_folder(
+            GALLERY_DIR,
+            "gallery_images",
+            folder,
+            tracked_extensions=IMAGE_EXTENSIONS,
+            recursive=recursive,
+        )
+    except FolderOperationError as exc:
+        return managed_folder_redirect("/gallery", current, f"删除失败：{exc}", "error")
+    next_folder = result.parent if current == result.source else current
+    message_type = "warning" if result.warning else "success"
+    message = result.warning or f"已删除文件夹「{result.source}」"
+    return managed_folder_redirect("/gallery", next_folder, message, message_type)
+
+
+@app.post("/gallery/images/move")
+def gallery_move_images(ids: list[int] = Form(...), destination: str = Form(""), current: str = Form("")):
+    current = normalize_gallery_folder(current)
+    try:
+        result = move_gallery_images(GALLERY_DIR, ids, destination)
+    except FolderOperationError as exc:
+        return managed_folder_redirect("/gallery", current, f"移动失败：{exc}", "error")
+    return managed_folder_redirect("/gallery", current, f"已移动 {result['moved']} 张图片", "success")
+
+
+@app.post("/gallery/images/delete")
+def gallery_delete_images(ids: list[int] = Form(...), current: str = Form("")):
+    current = normalize_gallery_folder(current)
+    try:
+        result = delete_gallery_images(GALLERY_DIR, ids)
+    except FolderOperationError as exc:
+        return managed_folder_redirect("/gallery", current, f"删除失败：{exc}", "error")
+    message_type = "warning" if result["warning"] else "success"
+    message = result["warning"] or f"已删除 {result['deleted']} 张图片"
+    return managed_folder_redirect("/gallery", current, message, message_type)
+
+
+@app.post("/gallery/upload")
+async def gallery_upload(folder: str = Form(""), files: list[UploadFile] = File(...)):
+    folder = normalize_gallery_folder(folder)
+    saved = []
+    for file in files:
+        if not file.filename:
+            continue
+        data = await file.read()
+        filename = f"{folder}/{file.filename}" if folder else file.filename
+        saved.append(save_gallery_bytes(data, filename))
+    busy_response = ingest_with_feedback(saved, folder, "图片已保存，但图库数据库正忙；请稍后点击“扫描图库”。")
+    if busy_response:
+        return busy_response
+    return redirect(folder_url("/gallery", folder))
 
 
 @app.post("/gallery/export")
@@ -238,11 +616,190 @@ def gallery_export():
 
 
 @app.post("/gallery/import")
-async def gallery_import(file: UploadFile = File(...)):
+async def gallery_import(file: UploadFile = File(...), folder: str = Form("")):
+    folder = normalize_gallery_folder(folder)
     data = await file.read()
-    import_gallery_zip(data)
-    scan_gallery()
-    return redirect("/gallery")
+    saved = import_gallery_zip(data, folder=folder)
+    busy_response = ingest_with_feedback(saved, folder, "图片已导入，但图库数据库正忙；请稍后点击“扫描图库”。")
+    if busy_response:
+        return busy_response
+    return redirect(folder_url("/gallery", folder))
+
+
+@app.get("/workflows", response_class=HTMLResponse)
+def workflows(
+    request: Request,
+    q: str = "",
+    category: str = "",
+    checkpoint: str = "",
+    folder: str = "",
+    message: str = "",
+    message_type: str = "",
+):
+    folder = normalize_gallery_folder(folder)
+    inventory_map = build_folder_inventory_map(WORKFLOW_DIR, WORKFLOW_EXTENSIONS)
+    query = "SELECT * FROM workflows WHERE 1=1"
+    params: list[str] = []
+    if q:
+        query += " AND (title LIKE ? OR path LIKE ? OR checkpoint LIKE ? OR loras LIKE ? OR notes LIKE ?)"
+        like = f"%{q}%"
+        params.extend([like, like, like, like, like])
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    if checkpoint:
+        query += " AND checkpoint LIKE ?"
+        params.append(f"%{checkpoint}%")
+    query += " ORDER BY updated_at DESC LIMIT 200"
+    with connect() as conn:
+        all_paths = [r["path"] for r in conn.execute("SELECT path FROM workflows ORDER BY path").fetchall()]
+        if q:
+            rows = conn.execute(query, params).fetchall()
+            folders = []
+        else:
+            rows = [r for r in conn.execute(query, params).fetchall() if is_direct_child_path(r["path"], folder)]
+            folders = merge_filesystem_folders(WORKFLOW_DIR, folder, build_workflow_folders(all_paths, folder), inventory_map)
+        categories = conn.execute("SELECT DISTINCT category FROM workflows WHERE category != '' ORDER BY category").fetchall()
+        checkpoints = conn.execute("SELECT DISTINCT checkpoint FROM workflows WHERE checkpoint != '' ORDER BY checkpoint").fetchall()
+    return templates.TemplateResponse(
+        "workflows.html",
+        {
+            "request": request,
+            "rows": rows,
+            "folders": folders,
+            "folder": folder,
+            "breadcrumbs": workflow_breadcrumbs(folder),
+            "q": q,
+            "category": category,
+            "checkpoint": checkpoint,
+            "categories": categories,
+            "checkpoints": checkpoints,
+            "message": message,
+            "message_type": message_type,
+            "folder_options": list_folder_options(WORKFLOW_DIR, inventory_map=inventory_map),
+            "current_folder_info": current_folder_info(folder, inventory_map),
+        },
+    )
+
+
+@app.post("/workflows/folders")
+def workflow_create_folder(folder: str = Form(""), name: str = Form("")):
+    folder = normalize_gallery_folder(folder)
+    child = safe_child_folder_name(name)
+    target_folder = f"{folder}/{child}" if folder else child
+    safe_folder_target(WORKFLOW_DIR, target_folder).mkdir(parents=True, exist_ok=True)
+    return redirect(folder_url("/workflows", target_folder))
+
+
+@app.post("/workflows/folders/move")
+def workflow_move_folder(source: str = Form(...), destination: str = Form(""), current: str = Form("")):
+    current = normalize_gallery_folder(current)
+    try:
+        result = move_managed_folder(
+            WORKFLOW_DIR,
+            "workflows",
+            source,
+            destination,
+            tracked_extensions=WORKFLOW_EXTENSIONS,
+        )
+    except FolderOperationError as exc:
+        return managed_folder_redirect("/workflows", current, f"移动失败：{exc}", "error")
+    next_folder = result.target if current == result.source else current
+    return managed_folder_redirect("/workflows", next_folder, f"已移动文件夹「{result.source}」", "success")
+
+
+@app.post("/workflows/folders/delete")
+def workflow_delete_folder(folder: str = Form(...), current: str = Form(""), recursive: bool = Form(False)):
+    current = normalize_gallery_folder(current)
+    try:
+        result = delete_managed_folder(
+            WORKFLOW_DIR,
+            "workflows",
+            folder,
+            tracked_extensions=WORKFLOW_EXTENSIONS,
+            recursive=recursive,
+        )
+    except FolderOperationError as exc:
+        return managed_folder_redirect("/workflows", current, f"删除失败：{exc}", "error")
+    next_folder = result.parent if current == result.source else current
+    message_type = "warning" if result.warning else "success"
+    message = result.warning or f"已删除文件夹「{result.source}」"
+    return managed_folder_redirect("/workflows", next_folder, message, message_type)
+
+
+@app.post("/workflows/upload")
+async def workflow_upload(file: UploadFile = File(...), folder: str = Form(""), title: str = Form(""), category: str = Form(""), notes: str = Form("")):
+    folder = normalize_gallery_folder(folder)
+    if not file.filename or not file.filename.lower().endswith(".json"):
+        return workflows_redirect("只能上传 JSON 工作流文件", folder)
+    try:
+        data = await file.read()
+        filename = f"{folder}/{file.filename}" if folder else file.filename
+        save_workflow_bytes(data, filename, title=title, category=category, notes=notes)
+    except Exception as exc:
+        return workflows_redirect(f"导入失败：{exc}", folder)
+    return redirect(folder_url("/workflows", folder))
+
+
+@app.post("/scan-workflows")
+def scan_workflows_route(folder: str = Form("")):
+    folder = normalize_gallery_folder(folder)
+    scan_workflows()
+    return redirect(folder_url("/workflows", folder))
+
+
+@app.get("/workflow-download/{workflow_id}")
+def workflow_download(workflow_id: int):
+    with connect() as conn:
+        row = conn.execute("SELECT path, title FROM workflows WHERE id=?", (workflow_id,)).fetchone()
+    if not row:
+        return Response("工作流不存在", status_code=404)
+    path = WORKFLOW_DIR / row["path"]
+    if not path.exists() or not path.is_file():
+        return Response("工作流文件不存在", status_code=404)
+    filename = row["title"] or path.name
+    if not filename.lower().endswith(".json"):
+        filename += ".json"
+    return FileResponse(path, media_type="application/json", filename=filename)
+
+
+@app.post("/workflows/export")
+def workflows_export():
+    data = export_workflows_zip()
+    return Response(content=data, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=workflow_export.zip"})
+
+
+@app.post("/workflows/import")
+async def workflows_import(file: UploadFile = File(...), folder: str = Form("")):
+    folder = normalize_gallery_folder(folder)
+    try:
+        data = await file.read()
+        import_workflows_zip(data, folder=folder)
+    except Exception as exc:
+        return workflows_redirect(f"导入失败：{exc}", folder)
+    return redirect(folder_url("/workflows", folder))
+
+
+@app.post("/workflows/{workflow_id}/update")
+def workflow_update(workflow_id: int, title: str = Form(...), category: str = Form(""), notes: str = Form("")):
+    with connect() as conn:
+        conn.execute(
+            "UPDATE workflows SET title=?, category=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (title, category, notes, workflow_id),
+        )
+    return redirect("/workflows")
+
+
+@app.post("/workflows/{workflow_id}/delete")
+def workflow_delete(workflow_id: int):
+    with connect() as conn:
+        row = conn.execute("SELECT path FROM workflows WHERE id=?", (workflow_id,)).fetchone()
+        if row:
+            path = WORKFLOW_DIR / row["path"]
+            if path.exists() and path.is_file():
+                path.unlink()
+        conn.execute("DELETE FROM workflows WHERE id=?", (workflow_id,))
+    return redirect("/workflows")
 
 
 @app.get("/llm", response_class=HTMLResponse)
@@ -253,13 +810,19 @@ def llm_page(request: Request):
 
 
 @app.post("/llm/settings")
-def save_llm_settings(base_url: str = Form(""), api_key: str = Form(""), model: str = Form(""), default_system_prompt: str = Form("")):
+def save_llm_settings(
+    base_url: str = Form(""),
+    api_key: str = Form(""),
+    model: str = Form(""),
+    default_system_prompt: str = Form(""),
+    next_path: str = Form("", alias="next"),
+):
     with connect() as conn:
         conn.execute(
             "UPDATE llm_settings SET base_url=?, api_key=?, model=?, default_system_prompt=? WHERE id=1",
             (base_url, api_key, model, default_system_prompt),
         )
-    return redirect("/llm")
+    return redirect(_safe_local_next(next_path, default="/llm"))
 
 
 @app.post("/llm/chat", response_class=HTMLResponse)
@@ -352,14 +915,21 @@ def delete_recipe(recipe_id: int):
 
 
 @app.get("/characters", response_class=HTMLResponse)
-def characters(request: Request):
+def characters(request: Request, q: str = ""):
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM characters ORDER BY updated_at DESC").fetchall()
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                "SELECT * FROM characters WHERE name LIKE ? OR lora LIKE ? OR trigger_words LIKE ? OR appearance LIKE ? OR notes LIKE ? ORDER BY updated_at DESC",
+                (like, like, like, like, like),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM characters ORDER BY updated_at DESC").fetchall()
         outfits = conn.execute("SELECT * FROM character_outfits ORDER BY character_id, id").fetchall()
     outfit_map: dict[int, list] = {}
     for o in outfits:
         outfit_map.setdefault(o["character_id"], []).append(o)
-    return templates.TemplateResponse("characters.html", {"request": request, "rows": rows, "outfit_map": outfit_map})
+    return templates.TemplateResponse("characters.html", {"request": request, "rows": rows, "outfit_map": outfit_map, "q": q})
 
 
 @app.post("/characters/add")
@@ -419,43 +989,146 @@ def delete_outfit(char_id: int, outfit_id: int):
 # ─── 工坊 ─────────────────────────────────────────────────────────────────────
 
 
+def get_characters_data() -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM characters ORDER BY updated_at DESC").fetchall()
+        outfits = conn.execute("SELECT * FROM character_outfits ORDER BY character_id, id").fetchall()
+    outfit_map: dict[int, list[dict]] = {}
+    for outfit in outfits:
+        outfit_map.setdefault(outfit["character_id"], []).append(
+            {"id": outfit["id"], "name": outfit["name"], "tags": outfit["tags"]}
+        )
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "lora": row["lora"],
+            "lora_weight": row["lora_weight"],
+            "trigger_words": row["trigger_words"],
+            "appearance": row["appearance"],
+            "outfits": outfit_map.get(row["id"], []),
+        }
+        for row in rows
+    ]
+
+
+def get_recipes_data(recipe_type: str = "") -> list[dict]:
+    query = "SELECT * FROM recipes"
+    params: list[str] = []
+    if recipe_type:
+        query += " WHERE type = ?"
+        params.append(recipe_type)
+    query += " ORDER BY type, updated_at DESC"
+    with connect() as conn:
+        return [dict(row) for row in conn.execute(query, params).fetchall()]
+
+
 @app.get("/workshop", response_class=HTMLResponse)
 def workshop(request: Request):
-    return templates.TemplateResponse("workshop.html", {"request": request})
+    with connect() as conn:
+        settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+    return templates.TemplateResponse(
+        "workshop.html",
+        {
+            "request": request,
+            "characters": get_characters_data(),
+            "recipes": get_recipes_data(),
+            "settings": settings,
+        },
+    )
 
 
 # ─── 工坊 JSON API ────────────────────────────────────────────────────────────
 
 
+@app.post("/api/workshop/copilot")
+def api_workshop_copilot(request_body: dict):
+    """工坊 Copilot：调用 LLM 产出结构化诊断与 Prompt 修改建议。"""
+    with connect() as conn:
+        settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+    if not settings or not settings["base_url"] or not settings["api_key"] or not settings["model"]:
+        return JSONResponse({"error": "LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API"}, status_code=400)
+    use_tools = bool(request_body.get("use_tools", True))
+    try:
+        result = generate_suggestion(
+            request_body,
+            base_url=settings["base_url"],
+            api_key=settings["api_key"],
+            model=settings["model"],
+            **({} if use_tools else {"tool_registry": {}}),
+        )
+    except CopilotError as exc:
+        status_code = getattr(exc, "status_code", 500) or 500
+        return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"])}, status_code=status_code)
+    return JSONResponse(result)
+
+
+@app.get("/api/tags/page")
+def api_tags_page(
+    q: str = "",
+    category: str = "",
+    subcategory: str = "",
+    offset: int = 0,
+    limit: int = 80,
+    include_count: bool = False,
+):
+    query, count_query, params, count_params, offset, limit = get_tag_rows(q, category, subcategory, offset, limit)
+    # 多取一行探测是否还有后续批次，分页默认不再重复执行 COUNT
+    params[-2] = limit + 1
+    with connect() as conn:
+        rows = [dict(r) for r in conn.execute(query, params).fetchall()]
+        has_more = len(rows) > limit
+        payload = {"rows": rows[:limit], "next_offset": offset + min(len(rows), limit), "has_more": has_more}
+        if include_count:
+            payload["shown_count"] = conn.execute(count_query, count_params).fetchone()[0]
+    return JSONResponse(payload)
+
+
+@app.get("/api/tags/filter")
+def api_tags_filter(q: str = "", category: str = "", subcategory: str = "", limit: int = 80):
+    """筛选局部刷新：一次返回首批行、分类统计与计数，前端不再解析整页 HTML。"""
+    with connect() as conn:
+        rows, shown_count, total_count, categories, subcategories = get_tags_page_data(
+            conn, q, category, subcategory, 0, limit
+        )
+    return JSONResponse(
+        {
+            "rows": [dict(r) for r in rows],
+            "next_offset": len(rows),
+            "has_more": len(rows) < shown_count,
+            "shown_count": shown_count,
+            "total_count": total_count,
+            "q": q,
+            "category": category,
+            "subcategory": subcategory,
+            "categories": [{"category": r["category"], "count": r["count"]} for r in categories],
+            "subcategories": [{"subcategory": r["subcategory"], "count": r["count"]} for r in subcategories],
+        }
+    )
+
+
+@app.get("/api/tags/lookup")
+def api_tags_lookup(q: str = ""):
+    tags = [t.strip() for t in q.split(",") if t.strip()]
+    if not tags:
+        return {}
+    placeholders = ",".join("?" for _ in tags)
+    with connect() as conn:
+        rows = conn.execute(
+            f"SELECT tag, zh, category, subcategory FROM tags WHERE tag IN ({placeholders})",
+            tags,
+        ).fetchall()
+    return {r["tag"]: dict(r) for r in rows}
+
+
 @app.get("/api/characters")
 def api_characters():
-    with connect() as conn:
-        rows = conn.execute("SELECT * FROM characters ORDER BY updated_at DESC").fetchall()
-        outfits = conn.execute("SELECT * FROM character_outfits ORDER BY character_id, id").fetchall()
-    outfit_map: dict[int, list] = {}
-    for o in outfits:
-        outfit_map.setdefault(o["character_id"], []).append({"id": o["id"], "name": o["name"], "tags": o["tags"]})
-    result = []
-    for r in rows:
-        result.append({
-            "id": r["id"], "name": r["name"], "lora": r["lora"], "lora_weight": r["lora_weight"],
-            "trigger_words": r["trigger_words"], "appearance": r["appearance"],
-            "outfits": outfit_map.get(r["id"], []),
-        })
-    return JSONResponse(result)
+    return JSONResponse(get_characters_data())
 
 
 @app.get("/api/recipes")
 def api_recipes(type: str = ""):
-    query = "SELECT * FROM recipes"
-    params: list[str] = []
-    if type:
-        query += " WHERE type = ?"
-        params.append(type)
-    query += " ORDER BY type, updated_at DESC"
-    with connect() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return JSONResponse([dict(r) for r in rows])
+    return JSONResponse(get_recipes_data(type))
 
 
 @app.post("/api/llm/optimize")
@@ -472,3 +1145,127 @@ def api_llm_optimize(request_body: dict):
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
     return JSONResponse({"result": answer})
+
+
+# ─── 抽卡（AI 提示词生成器）───────────────────────────────────────────────────
+
+GACHA_INDEX = BASE_DIR / "static" / "gacha" / "index.html"
+
+# 抽卡键值存储的拒绝名单：API Key 相关只存服务端 llm_settings，绝不落 gacha_store。
+GACHA_STORE_KEY_DENYLIST = ("sd_api_key", "sd_api_keys")
+
+
+def _gacha_key_allowed(key: str) -> bool:
+    key = (key or "").strip()
+    if not key.startswith("sd_"):
+        return False
+    return not any(bad in key for bad in GACHA_STORE_KEY_DENYLIST)
+
+
+def _gacha_error_message(exc: Exception, api_key: str = "") -> str:
+    """返回可展示的错误文本，并兜底移除服务端密钥。"""
+    message = str(exc)
+    return message.replace(api_key, "***") if api_key else message
+
+
+@app.get("/gacha", response_class=HTMLResponse)
+def gacha_page():
+    return FileResponse(GACHA_INDEX)
+
+
+@app.get("/api/gacha/settings")
+def api_gacha_settings_get():
+    with connect() as conn:
+        settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+    return JSONResponse({
+        "base_url": settings["base_url"] or "",
+        "model": settings["model"] or "",
+        "has_key": bool(settings["api_key"]),
+    })
+
+
+@app.post("/api/gacha/settings")
+def api_gacha_settings_post(request_body: dict):
+    base_url = str(request_body.get("base_url", "")).strip()
+    model = str(request_body.get("model", "")).strip()
+    api_key = request_body.get("api_key")
+    with connect() as conn:
+        if api_key is None:
+            conn.execute("UPDATE llm_settings SET base_url=?, model=? WHERE id=1", (base_url, model))
+        else:
+            conn.execute(
+                "UPDATE llm_settings SET base_url=?, model=?, api_key=? WHERE id=1",
+                (base_url, model, str(api_key)),
+            )
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/gacha/llm")
+def api_gacha_llm(request_body: dict):
+    messages = request_body.get("messages")
+    if (
+        not isinstance(messages, list)
+        or not messages
+        or any(not isinstance(item, dict) or not item.get("role") or "content" not in item for item in messages)
+    ):
+        return JSONResponse({"error": "messages 不能为空"}, status_code=400)
+    with connect() as conn:
+        settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+    if not settings["base_url"] or not settings["api_key"] or not settings["model"]:
+        return JSONResponse({"error": "LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API"}, status_code=400)
+    try:
+        answer = chat_completion_messages(
+            settings["base_url"],
+            settings["api_key"],
+            settings["model"],
+            messages,
+            temperature=request_body.get("temperature", 0.7),
+            top_p=request_body.get("top_p"),
+            frequency_penalty=request_body.get("frequency_penalty"),
+            presence_penalty=request_body.get("presence_penalty"),
+            max_tokens=request_body.get("max_tokens", 8192),
+        )
+    except Exception as exc:
+        return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"])}, status_code=500)
+    return JSONResponse({"result": answer})
+
+
+@app.get("/api/gacha/models")
+def api_gacha_models():
+    with connect() as conn:
+        settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+    if not settings["base_url"] or not settings["api_key"]:
+        return JSONResponse({"error": "请先配置 base_url 和 API Key"}, status_code=400)
+    try:
+        models = list_models(settings["base_url"], settings["api_key"])
+    except Exception as exc:
+        return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"])}, status_code=500)
+    return JSONResponse({"models": models})
+
+
+@app.get("/api/gacha/store")
+def api_gacha_store_get():
+    with connect() as conn:
+        rows = conn.execute("SELECT key, value FROM gacha_store").fetchall()
+    return JSONResponse({r["key"]: r["value"] for r in rows if _gacha_key_allowed(r["key"])})
+
+
+@app.post("/api/gacha/store")
+def api_gacha_store_post(request_body: dict):
+    key = str(request_body.get("key", "")).strip()
+    value = request_body.get("value", "")
+    if not _gacha_key_allowed(key):
+        return JSONResponse({"ok": False, "skipped": True})
+    with connect() as conn:
+        if value is None:
+            conn.execute("DELETE FROM gacha_store WHERE key=?", (key,))
+        else:
+            conn.execute(
+                """
+                INSERT INTO gacha_store (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP
+                """,
+                (key, str(value)),
+            )
+    return JSONResponse({"ok": True})

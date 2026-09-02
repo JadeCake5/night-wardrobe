@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>提示词编辑器</h1>
+<div class="split">
+  <section>
+    <h2>模板</h2>
+    <form class="vertical" method="post" action="/editor/save-template">
+      <input name="name" value="{{ selected.name }}" placeholder="模板名称">
+      <textarea name="positive_template" rows="10">{{ selected.positive_template }}</textarea>
+      <textarea name="negative_template" rows="6">{{ selected.negative_template }}</textarea>
+      <input name="notes" value="{{ selected.notes }}" placeholder="备注">
+      <button>保存模板</button>
+    </form>
+  </section>
+  <section>
+    <h2>可复制组合</h2>
+    {% for group in groups_rows %}
+    <details class="prompt-card">
+      <summary>{{ group.name }}</summary>
+      <textarea readonly>{{ group.positive_prompt }}</textarea>
+      <textarea readonly>{{ group.negative_prompt }}</textarea>
+    </details>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

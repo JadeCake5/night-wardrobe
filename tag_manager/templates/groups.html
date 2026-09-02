@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Tag 组合</h1>
+<form class="search" method="get">
+  <input name="q" value="{{ q }}" placeholder="搜索组合 / 提示词 / 备注">
+  <select name="category">
+    <option value="">全部分类</option>
+    {% for item in categories %}<option value="{{ item.category }}" {% if category == item.category %}selected{% endif %}>{{ item.category }}</option>{% endfor %}
+  </select>
+  <button>搜索</button>
+</form>
+<form class="panel" method="post" action="/categories/add">
+  <input name="name" placeholder="新增组合分类">
+  <input type="hidden" name="kind" value="group">
+  <input name="sort_order" type="number" value="100" placeholder="排序">
+  <input name="notes" placeholder="分类备注">
+  <button>新增分类</button>
+</form>
+<form class="panel vertical" method="post" action="/groups/add">
+  <input name="name" placeholder="组合名称" required>
+  <select name="category">
+    <option value="">分类</option>
+    {% for item in categories %}<option value="{{ item.category }}">{{ item.category }}</option>{% endfor %}
+  </select>
+  <textarea name="positive_prompt" placeholder="正向提示词"></textarea>
+  <textarea name="negative_prompt" placeholder="负向提示词"></textarea>
+  <input name="notes" placeholder="备注">
+  <button>新增组合</button>
+</form>
+{% for row in rows %}
+<section class="prompt-card">
+  <h3>{{ row.name }} <small>{{ row.category }}</small></h3>
+  <label>Positive</label><textarea readonly>{{ row.positive_prompt }}</textarea>
+  <label>Negative</label><textarea readonly>{{ row.negative_prompt }}</textarea>
+  <p>{{ row.notes }}</p>
+</section>
+{% endfor %}
+{% endblock %}

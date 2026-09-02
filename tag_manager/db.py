@@ -10,22 +10,29 @@ from .default_prompts import DEFAULT_NEGATIVE_TEMPLATE, DEFAULT_POSITIVE_TEMPLAT
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
 DB_PATH = BASE_DIR / "tag_wardrobe.sqlite3"
+SQLITE_TIMEOUT_SECONDS = 15.0
+SQLITE_BUSY_TIMEOUT_MS = int(SQLITE_TIMEOUT_SECONDS * 1000)
 
 
 @contextmanager
 def connect(db_path: Path = DB_PATH):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=SQLITE_TIMEOUT_SECONDS)
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def init_db(db_path: Path = DB_PATH) -> None:
     with connect(db_path) as conn:
+        conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS categories (
@@ -85,7 +92,25 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 parameters TEXT DEFAULT '',
                 checkpoint TEXT DEFAULT '',
                 loras TEXT DEFAULT '',
+                metadata_json TEXT DEFAULT '',
+                metadata_source TEXT DEFAULT '',
+                generation_params TEXT DEFAULT '',
+                file_mtime REAL DEFAULT 0,
+                file_size INTEGER DEFAULT 0,
                 rating INTEGER DEFAULT 0,
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS workflows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                title TEXT DEFAULT '',
+                category TEXT DEFAULT '',
+                node_count INTEGER DEFAULT 0,
+                checkpoint TEXT DEFAULT '',
+                loras TEXT DEFAULT '',
                 notes TEXT DEFAULT '',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -133,6 +158,76 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS gacha_store (
+                key TEXT PRIMARY KEY,
+                value TEXT DEFAULT '',
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS video_decrypt_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_name TEXT NOT NULL,
+                input_path TEXT DEFAULT '',
+                output_name TEXT NOT NULL,
+                output_path TEXT DEFAULT '',
+                input_size INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'uploading',
+                error_code TEXT DEFAULT '',
+                error_message TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                started_at TEXT DEFAULT '',
+                completed_at TEXT DEFAULT '',
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS manga_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL DEFAULT 'download',
+                jmid TEXT DEFAULT '',
+                title TEXT DEFAULT '',
+                format TEXT NOT NULL DEFAULT 'pdf',
+                params_json TEXT DEFAULT '',
+                work_dir TEXT DEFAULT '',
+                output_path TEXT DEFAULT '',
+                output_size INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'queued',
+                progress_label TEXT DEFAULT '',
+                error_code TEXT DEFAULT '',
+                error_message TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                started_at TEXT DEFAULT '',
+                completed_at TEXT DEFAULT '',
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS lora_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                filename TEXT DEFAULT '',
+                base_model TEXT DEFAULT '',
+                net_dim TEXT DEFAULT '',
+                suggested_weight REAL DEFAULT 0.8,
+                trigger_words TEXT DEFAULT '',
+                tag_frequency TEXT DEFAULT '',
+                civitai_text TEXT DEFAULT '',
+                preview_image TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_video_decrypt_jobs_status
+            ON video_decrypt_jobs(status);
+
+            CREATE INDEX IF NOT EXISTS idx_manga_jobs_status
+            ON manga_jobs(status);
+
+            CREATE INDEX IF NOT EXISTS idx_tags_category_listing
+            ON tags(category, rating DESC, subcategory, tag);
+
+            CREATE INDEX IF NOT EXISTS idx_tags_rating_listing
+            ON tags(rating DESC, category, subcategory, tag);
             """
         )
         default_categories = [
@@ -140,10 +235,11 @@ def init_db(db_path: Path = DB_PATH) -> None:
             ("2.人物", "tag", 20),
             ("3.服饰", "tag", 30),
             ("4.表情", "tag", 40),
+            ("4.角色/作品", "tag", 42),
             ("5.动作", "tag", 50),
             ("6.场景道具", "tag", 60),
+            ("8.画风与质量", "tag", 66),
             ("0.可以涩涩", "tag", 70),
-            ("NSFW Tags", "tag", 80),
             ("tag组合", "group", 90),
             ("手工添加", "tag", 100),
         ]
@@ -170,6 +266,21 @@ def init_db(db_path: Path = DB_PATH) -> None:
             """,
             (DEFAULT_SYSTEM_PROMPT,),
         )
+        ensure_gallery_image_columns(conn)
+
+
+def ensure_gallery_image_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(gallery_images)").fetchall()}
+    columns = {
+        "metadata_json": "TEXT DEFAULT ''",
+        "metadata_source": "TEXT DEFAULT ''",
+        "generation_params": "TEXT DEFAULT ''",
+        "file_mtime": "REAL DEFAULT 0",
+        "file_size": "INTEGER DEFAULT 0",
+    }
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE gallery_images ADD COLUMN {name} {definition}")
 
 
 def upsert_category(name: str, kind: str = "tag", sort_order: int = 0, notes: str = "") -> None:
@@ -275,6 +386,82 @@ def upsert_character(name: str, lora: str = "", lora_weight: float = 1.0, trigge
         )
         row = conn.execute("SELECT id FROM characters WHERE name=?", (name,)).fetchone()
         return row["id"] if row else 0
+
+
+def upsert_lora_card(
+    name: str,
+    filename: str = "",
+    base_model: str = "",
+    net_dim: str = "",
+    suggested_weight: float = 0.8,
+    trigger_words: str = "",
+    tag_frequency: str = "",
+    civitai_text: str = "",
+    notes: str = "",
+    connect_factory=connect,
+) -> int:
+    name = clean_text(name)
+    if not name:
+        return 0
+    with connect_factory() as conn:
+        conn.execute(
+            """
+            INSERT INTO lora_cards
+                (name, filename, base_model, net_dim, suggested_weight, trigger_words, tag_frequency, civitai_text, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                filename=COALESCE(NULLIF(excluded.filename, ''), lora_cards.filename),
+                base_model=COALESCE(NULLIF(excluded.base_model, ''), lora_cards.base_model),
+                net_dim=COALESCE(NULLIF(excluded.net_dim, ''), lora_cards.net_dim),
+                suggested_weight=excluded.suggested_weight,
+                trigger_words=COALESCE(NULLIF(excluded.trigger_words, ''), lora_cards.trigger_words),
+                tag_frequency=COALESCE(NULLIF(excluded.tag_frequency, ''), lora_cards.tag_frequency),
+                civitai_text=COALESCE(NULLIF(excluded.civitai_text, ''), lora_cards.civitai_text),
+                notes=COALESCE(NULLIF(excluded.notes, ''), lora_cards.notes),
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (name, clean_text(filename), clean_text(base_model), clean_text(net_dim),
+             suggested_weight, clean_text(trigger_words), tag_frequency, civitai_text, clean_text(notes)),
+        )
+        row = conn.execute("SELECT id FROM lora_cards WHERE name=?", (name,)).fetchone()
+        return row["id"] if row else 0
+
+
+def list_lora_cards(connect_factory=connect) -> list[dict]:
+    with connect_factory() as conn:
+        rows = conn.execute(
+            "SELECT * FROM lora_cards ORDER BY updated_at DESC, id DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_lora_card(card_id: int, connect_factory=connect) -> dict | None:
+    with connect_factory() as conn:
+        row = conn.execute("SELECT * FROM lora_cards WHERE id=?", (card_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_lora_card_by_name(name: str, connect_factory=connect) -> dict | None:
+    with connect_factory() as conn:
+        row = conn.execute("SELECT * FROM lora_cards WHERE name=?", (name,)).fetchone()
+    return dict(row) if row else None
+
+
+def update_lora_card_preview(card_id: int, preview_image: str, connect_factory=connect) -> None:
+    with connect_factory() as conn:
+        conn.execute(
+            "UPDATE lora_cards SET preview_image=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (preview_image, card_id),
+        )
+
+
+def delete_lora_card(card_id: int, connect_factory=connect) -> dict | None:
+    with connect_factory() as conn:
+        row = conn.execute("SELECT * FROM lora_cards WHERE id=?", (card_id,)).fetchone()
+        if row is None:
+            return None
+        conn.execute("DELETE FROM lora_cards WHERE id=?", (card_id,))
+    return dict(row)
 
 
 def add_outfit(character_id: int, name: str, tags: str = "", notes: str = "") -> None:

@@ -1,0 +1,47 @@
+<div data-gallery-image-manager data-current-folder="{{ folder }}">
+  <dialog class="folder-dialog" data-image-move-dialog aria-labelledby="image-move-title">
+    <form method="post" action="/gallery/images/move" data-image-move-form>
+      <input type="hidden" name="current" value="{{ folder }}">
+      <span data-image-move-ids></span>
+      <div class="folder-dialog-header">
+        <div>
+          <span class="folder-dialog-eyebrow">整理图片</span>
+          <h2 id="image-move-title">移动“<span data-image-move-name></span>”</h2>
+        </div>
+        <button class="folder-dialog-close" type="button" data-folder-dialog-close aria-label="关闭">×</button>
+      </div>
+      <label class="folder-dialog-field">
+        <span>目标文件夹</span>
+        <select name="destination" data-image-move-destination required></select>
+      </label>
+      <p class="folder-move-preview" data-image-move-preview></p>
+      <p class="folder-dialog-hint">同名图片已存在于目标文件夹时，本次移动会被整体拒绝；图片的标题、备注、评分等信息保持不变。</p>
+      <div class="folder-dialog-actions">
+        <button type="button" class="btn-sm" data-folder-dialog-close>取消</button>
+        <button type="submit" data-image-move-confirm>确认移动</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="folder-dialog folder-delete-dialog" data-image-delete-dialog aria-labelledby="image-delete-title">
+    <form method="post" action="/gallery/images/delete" data-image-delete-form>
+      <input type="hidden" name="current" value="{{ folder }}">
+      <span data-image-delete-ids></span>
+      <div class="folder-dialog-header">
+        <div>
+          <span class="folder-dialog-eyebrow danger">不可撤销</span>
+          <h2 id="image-delete-title">删除 <span data-image-delete-count>0</span> 张图片</h2>
+        </div>
+        <button class="folder-dialog-close" type="button" data-folder-dialog-close aria-label="关闭">×</button>
+      </div>
+      <p class="folder-delete-warning">删除后，图片文件会从磁盘移除，对应的图库记录也会同步清理。</p>
+      <p class="folder-dialog-hint" data-image-delete-names></p>
+      <div class="folder-dialog-actions">
+        <button type="button" class="btn-sm" data-folder-dialog-close>取消</button>
+        <button type="submit" class="btn-danger">确认删除</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+
+<script src="/static/gallery-images.js?v=1"></script>

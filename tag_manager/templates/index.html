@@ -9,14 +9,16 @@
   <div class="card"><strong>{{ stats.characters }}</strong><span>角色</span></div>
   <div class="card"><strong>{{ stats.recipes }}</strong><span>配方</span></div>
   <div class="card"><strong>{{ stats.images }}</strong><span>图库图片</span></div>
+  <div class="card"><strong>{{ stats.workflows }}</strong><span>工作流</span></div>
 </section>
-<section class="actions">
+<section class="toolbar">
   {% if dev_mode %}
   <form method="post" action="/import-magic-book"><button>从魔导书重新导入</button></form>
   <form method="post" action="/scan-gallery"><button>扫描图库</button></form>
   {% endif %}
-  <form method="post" action="/export-tags"><button>导出 Tag 库 (JSON)</button></form>
-  <form method="post" action="/import-tags"><button>从 JSON 导入 Tag 库</button></form>
+  <button onclick="exportTagsJSON()">导出 Tag 库 (JSON)</button>
+  <button onclick="document.getElementById('import-file').click()">从 JSON 导入 Tag 库</button>
+  <input type="file" id="import-file" accept=".json" style="display:none" onchange="importTagsJSON(this)">
 </section>
 <h2>最近图库</h2>
 <div class="grid">
@@ -27,4 +29,42 @@
   </a>
   {% endfor %}
 </div>
+
+<script>
+function exportTagsJSON() {
+  const btn = event.target;
+  btn.textContent = '导出中...';
+  btn.disabled = true;
+  fetch('/export-tags', {method: 'POST'})
+    .then(r => {
+      if (!r.ok) throw new Error('导出失败: ' + r.status);
+      return r.blob();
+    })
+    .then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'tag_library.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      btn.textContent = '导出成功';
+      setTimeout(() => { btn.textContent = '导出 Tag 库 (JSON)'; btn.disabled = false; }, 1500);
+    })
+    .catch(e => {
+      btn.textContent = '导出 Tag 库 (JSON)';
+      btn.disabled = false;
+      alert(e.message);
+    });
+}
+
+function importTagsJSON(input) {
+  if (!input.files[0]) return;
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  fetch('/import-tags', {method: 'POST', body: fd})
+    .then(r => { if (r.redirected) window.location.href = r.url; else window.location.reload(); });
+  input.value = '';
+}
+</script>
 {% endblock %}

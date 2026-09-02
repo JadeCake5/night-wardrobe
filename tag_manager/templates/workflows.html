@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="workflow-hero">
+  <div class="page-head" style="margin-bottom:0">
+    <h1>工作流</h1>
+    <p class="page-hint">像图库一样按文件夹整理 ComfyUI workflow JSON，卡片可直接拖拽到 ComfyUI 导入。</p>
+  </div>
+  {% if message %}<p class="notice notice-{{ message_type or 'info' }}">{{ message }}</p>{% endif %}
+</section>
+
+<div class="toolbar">
+  <nav class="gallery-breadcrumbs">
+    {% for crumb in breadcrumbs %}
+      {% if not loop.last %}<a class="gallery-breadcrumb-item" href="{{ crumb.url }}">{{ crumb.name }}</a><span class="gallery-breadcrumb-separator">/</span>{% else %}<strong class="gallery-breadcrumb-item is-current">{{ crumb.name }}</strong>{% endif %}
+    {% endfor %}
+    {% if q %}<span class="gallery-breadcrumb-separator">/</span><strong class="gallery-breadcrumb-item is-current">搜索：{{ q }}</strong>{% endif %}
+  </nav>
+  <form class="search-box" method="get">
+    {% if folder and not q %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+    <span class="search-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+    </span>
+    <input name="q" value="{{ q }}" placeholder="搜索标题 / 文件名 / 模型 / LoRA / 备注">
+    <button type="submit" class="search-go">搜索</button>
+  </form>
+  <div class="spacer"></div>
+  <div class="icon-actions">
+    <div class="icon-pop-wrap">
+      <button type="button" class="icon-btn" data-pop-toggle="newFolderPop" title="新建文件夹" aria-label="新建文件夹">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10.5v5M9.5 13h5"/></svg>
+      </button>
+      <div class="icon-pop" id="newFolderPop" hidden>
+        <form class="icon-pop-form" method="post" action="/workflows/folders">
+          <input type="hidden" name="folder" value="{{ folder }}">
+          <input name="name" placeholder="子文件夹名称" required>
+          <button class="btn-sm">创建</button>
+        </form>
+      </div>
+    </div>
+    <form method="post" action="/workflows/upload" enctype="multipart/form-data">
+      <input type="hidden" name="folder" value="{{ folder }}">
+      <label class="icon-btn" title="上传工作流到当前文件夹" aria-label="上传工作流">
+        <input type="file" name="file" accept=".json,application/json" onchange="this.form.submit()" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V5m0 0L8 9m4-4l4 4"/><path d="M5 15v2a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-2"/></svg>
+      </label>
+    </form>
+    <form method="post" action="/workflows/import" enctype="multipart/form-data">
+      <input type="hidden" name="folder" value="{{ folder }}">
+      <label class="icon-btn" title="导入 ZIP" aria-label="导入 ZIP">
+        <input type="file" name="file" accept=".zip" onchange="this.form.submit()" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v10m0 0l-4-4m4 4l4-4"/><path d="M5 15v2a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-2"/></svg>
+      </label>
+    </form>
+    <form method="post" action="/scan-workflows">
+      <input type="hidden" name="folder" value="{{ folder }}">
+      <button class="icon-btn icon-scan" title="扫描工作流目录" aria-label="扫描工作流">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
+      </button>
+    </form>
+    <form method="post" action="/workflows/export">
+      <button class="icon-btn" title="导出 ZIP" aria-label="导出 ZIP">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8l2-4h12l2 4"/><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M10 12h4"/></svg>
+      </button>
+    </form>
+    {% if folder %}
+    <div class="icon-pop-wrap">
+      <button type="button" class="icon-btn" data-pop-toggle="folderOpsPop" title="当前文件夹操作" aria-label="当前文件夹操作">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+      </button>
+      <div class="icon-pop icon-menu" id="folderOpsPop" hidden>
+        <button type="button" data-folder-move
+          data-folder-path="{{ current_folder_info.path }}" data-folder-name="{{ current_folder_info.name }}"
+          data-folder-count="{{ current_folder_info.folder_count }}" data-folder-tracked-count="{{ current_folder_info.tracked_file_count }}"
+          data-folder-other-count="{{ current_folder_info.other_file_count }}">移动当前文件夹</button>
+        <button type="button" class="danger" data-folder-delete
+          data-folder-path="{{ current_folder_info.path }}" data-folder-name="{{ current_folder_info.name }}"
+          data-folder-count="{{ current_folder_info.folder_count }}" data-folder-tracked-count="{{ current_folder_info.tracked_file_count }}"
+          data-folder-other-count="{{ current_folder_info.other_file_count }}">删除当前文件夹</button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if folders %}
+<div class="folder-grid workflow-folder-grid">
+{% for item in folders %}
+  <article class="folder-card workflow-folder-card" data-folder-card>
+    <a class="folder-card-open" href="/workflows?folder={{ item.path|urlencode }}">
+      <div class="folder-cover workflow-folder-cover">
+        <span class="gallery-folder-glyph workflow-folder-glyph" aria-hidden="true"></span>
+      </div>
+      <div class="folder-meta">
+        <strong>{{ item.name }}</strong>
+        <span>{{ item.count }} 个工作流</span>
+      </div>
+    </a>
+    <button type="button" class="folder-menu-toggle" data-folder-menu-toggle aria-expanded="false" aria-label="管理文件夹：{{ item.name }}"></button>
+    <div class="folder-card-menu is-icons" data-folder-card-menu hidden>
+      <button type="button" class="menu-icon-btn" title="移动到…" aria-label="移动到…" data-folder-move data-folder-path="{{ item.path }}" data-folder-name="{{ item.name }}"
+        data-folder-count="{{ item.folder_count }}" data-folder-tracked-count="{{ item.tracked_file_count }}" data-folder-other-count="{{ item.other_file_count }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6m0 0-2.5-2.5M15 13l-2.5 2.5"/></svg>
+      </button>
+      <button type="button" class="menu-icon-btn danger" title="删除文件夹" aria-label="删除文件夹" data-folder-delete data-folder-path="{{ item.path }}" data-folder-name="{{ item.name }}"
+        data-folder-count="{{ item.folder_count }}" data-folder-tracked-count="{{ item.tracked_file_count }}" data-folder-other-count="{{ item.other_file_count }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 12a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+      </button>
+    </div>
+  </article>
+{% endfor %}
+</div>
+{% endif %}
+
+{% set folder_base = "/workflows" %}
+{% include "_folder_management_dialogs.html" %}
+
+<div class="gallery-grid workflow-grid">
+{% for row in rows %}
+  <article class="workflow-card-wrap">
+    <a class="workflow-card" href="/workflow-files/{{ row.path|urlpath }}" draggable="true" download data-workflow-url="/workflow-files/{{ row.path|urlpath }}" data-workflow-name="{{ row.title or row.path.rsplit('/', 1)[-1] }}.json">
+      <div class="workflow-card-cover">
+        <span class="workflow-file-icon">JSON</span>
+        <span class="workflow-node-count">{{ row.node_count }} 节点</span>
+      </div>
+      <div class="workflow-card-info">
+        <h3>{{ row.title or row.path }}</h3>
+        <small>{{ row.path }}</small>
+        <div class="workflow-meta">
+          {% if row.category %}<span class="gallery-badge">{{ row.category }}</span>{% endif %}
+          {% if row.checkpoint %}<span class="gallery-badge model">{{ row.checkpoint }}</span>{% endif %}
+          {% if row.loras %}<span class="gallery-badge lora">{{ row.loras[:48] }}</span>{% endif %}
+        </div>
+        {% if row.notes %}<p>{{ row.notes }}</p>{% endif %}
+        <em>拖到 ComfyUI 导入</em>
+      </div>
+    </a>
+  </article>
+{% endfor %}
+{% if not rows and not folders %}
+  <p class="empty-hint">{% if q %}没有找到匹配工作流。{% else %}当前文件夹为空。将 JSON 放入 <code>tag_manager/workflows/</code> 目录后点击工具栏的扫描按钮，或直接点上传图标选择文件。{% endif %}</p>
+{% endif %}
+</div>
+
+<script>
+document.querySelectorAll('.workflow-card').forEach(card => {
+  card.addEventListener('dragstart', e => {
+    const url = new URL(card.dataset.workflowUrl, location.origin).href;
+    e.dataTransfer.setData('DownloadURL', 'application/json:' + card.dataset.workflowName + ':' + url);
+    e.dataTransfer.setData('text/uri-list', url);
+    e.dataTransfer.setData('text/plain', url);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+});
+</script>
+{% endblock %}

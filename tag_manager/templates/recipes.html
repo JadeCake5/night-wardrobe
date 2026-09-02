@@ -1,23 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>配方库</h1>
-
-<div class="recipe-tabs">
-  <a class="tab {% if not type %}active{% endif %}" href="/recipes">全部</a>
-  {% for t_id, t_label in recipe_types %}
-  <a class="tab {% if type == t_id %}active{% endif %}" href="/recipes?type={{ t_id }}">
-    {{ t_label }} <small>({{ count_map.get(t_id, 0) }})</small>
-  </a>
-  {% endfor %}
+<div class="page-head">
+  <h1>配方库</h1>
+  <div class="page-head-actions">
+    <button onclick="document.getElementById('add-panel').style.display='flex'">+ 新增配方</button>
+  </div>
 </div>
 
-<form class="search" method="get">
-  <input type="hidden" name="type" value="{{ type }}">
-  <input name="q" value="{{ q }}" placeholder="搜索配方名 / 提示词 / 备注">
-  <button>搜索</button>
-</form>
-
-<button class="btn-float" onclick="document.getElementById('add-panel').style.display='flex'">+ 新增配方</button>
+<div class="toolbar">
+  <nav class="recipe-tabs">
+    <a class="tab {% if not type %}active{% endif %}" href="/recipes">全部</a>
+    {% for t_id, t_label in recipe_types %}
+    <a class="tab {% if type == t_id %}active{% endif %}" href="/recipes?type={{ t_id }}">
+      {{ t_label }} <small>({{ count_map.get(t_id, 0) }})</small>
+    </a>
+    {% endfor %}
+  </nav>
+  <form class="search-box" method="get">
+    <input type="hidden" name="type" value="{{ type }}">
+    <span class="search-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+    </span>
+    <input name="q" value="{{ q }}" placeholder="搜索配方名 / 提示词 / 备注">
+    <button type="submit" class="search-go">搜索</button>
+  </form>
+</div>
 
 <!-- 新增悬浮窗 -->
 <div id="add-panel" class="floating-panel" style="display:none">
@@ -52,14 +59,14 @@
     <div class="recipe-field">
       <label>Positive</label>
       <div class="recipe-text">{{ row.positive_prompt[:200] }}{% if row.positive_prompt|length > 200 %}...{% endif %}</div>
-      <button class="btn-copy" onclick="copyText(this, '{{ row.positive_prompt|replace("'", "\\'") | replace("\n", " ") }}')">复制</button>
+      <button class="btn-copy" onclick="copyRecipeField(this, {{ row.id }}, 'positive_prompt')">复制</button>
     </div>
     {% endif %}
     {% if row.negative_prompt %}
     <div class="recipe-field">
       <label>Negative</label>
       <div class="recipe-text negative">{{ row.negative_prompt[:150] }}{% if row.negative_prompt|length > 150 %}...{% endif %}</div>
-      <button class="btn-copy" onclick="copyText(this, '{{ row.negative_prompt|replace("'", "\\'") | replace("\n", " ") }}')">复制</button>
+      <button class="btn-copy" onclick="copyRecipeField(this, {{ row.id }}, 'negative_prompt')">复制</button>
     </div>
     {% endif %}
     {% if row.params_json %}
@@ -106,21 +113,23 @@
 </div>
 
 <script>
-const recipesData = {
+var recipesData = {
 {% for row in rows %}
   {{ row.id }}: {
-    name: `{{ row.name|replace('`','') }}`,
-    type: `{{ row.type }}`,
-    positive_prompt: `{{ row.positive_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
-    negative_prompt: `{{ row.negative_prompt|replace('`','\\`')|replace('\\','\\\\') }}`,
-    params_json: `{{ row.params_json|replace('`','\\`') }}`,
-    notes: `{{ row.notes|replace('`','') }}`
+    name: {{ row.name|tojson }},
+    type: {{ row.type|tojson }},
+    positive_prompt: {{ row.positive_prompt|tojson }},
+    negative_prompt: {{ row.negative_prompt|tojson }},
+    params_json: {{ row.params_json|tojson }},
+    notes: {{ row.notes|tojson }}
   },
 {% endfor %}
 };
 
-function copyText(btn, text) {
-  navigator.clipboard.writeText(text).then(() => {
+function copyRecipeField(btn, id, field) {
+  const d = recipesData[id];
+  if (!d) return;
+  navigator.clipboard.writeText(d[field] || '').then(() => {
     btn.textContent = '已复制';
     setTimeout(() => btn.textContent = '复制', 1200);
   });

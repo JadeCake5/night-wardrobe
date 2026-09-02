@@ -1,136 +1,257 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>工坊</h1>
-
-<div class="workshop-layout">
-  <!-- 左侧选择面板 -->
-  <div class="workshop-panel">
-    <div class="ws-section">
-      <h3>角色</h3>
-      <select id="ws-char" onchange="onCharChange()">
-        <option value="">-- 选择角色 --</option>
-      </select>
-      <select id="ws-outfit" onchange="buildPrompt()" style="display:none">
-        <option value="">-- 选择服装 --</option>
-      </select>
-    </div>
-
-    <div class="ws-section">
-      <h3>画师串</h3>
-      <select id="ws-artist" onchange="buildPrompt()">
-        <option value="">-- 选择画师串 --</option>
-      </select>
-    </div>
-
-    <div class="ws-section">
-      <h3>场景预设</h3>
-      <select id="ws-scene" onchange="buildPrompt()">
-        <option value="">-- 选择场景 --</option>
-      </select>
-    </div>
-
-    <div class="ws-section">
-      <h3>负面模板</h3>
-      <select id="ws-negative" onchange="buildPrompt()">
-        <option value="">-- 选择负面模板 --</option>
-      </select>
-    </div>
-
-    <div class="ws-section">
-      <h3>自定义补充</h3>
-      <textarea id="ws-custom-pos" rows="2" placeholder="额外正面 tag（追加到末尾）" oninput="buildPrompt()"></textarea>
-      <textarea id="ws-custom-neg" rows="2" placeholder="额外负面 tag（追加到末尾）" oninput="buildPrompt()"></textarea>
-    </div>
-
-    <div class="ws-section">
-      <button class="btn-llm" onclick="optimizeWithLLM()">AI 优化提示词</button>
+<header class="ws-header">
+  <div class="ws-header-title">
+    <h1>工坊</h1>
+    <p>组合角色、画师、场景并编辑最终 Prompt</p>
+  </div>
+  <div class="ws-header-actions">
+    <button type="button" id="wsCopilotBtn" class="icon-btn ws-copilot-btn" aria-pressed="false" aria-controls="copilotDrawer" title="AI 助手：打开或收起助手面板" aria-label="AI 助手">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l1.8 4.4L18 10l-4.2 1.6L12 16l-1.8-4.4L6 10l4.2-1.6z"/><path d="M18.5 15.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/></svg>
+    </button>
+    <button type="button" id="wsLlmSettingsBtn" class="icon-btn" title="LLM 设置" aria-label="LLM 设置" aria-haspopup="dialog" aria-controls="wsLlmSettingsDialog" onclick="document.getElementById('wsLlmSettingsDialog').showModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
+    </button>
+    <button type="button" class="icon-btn" onclick="copyBoth()" title="复制全部" aria-label="复制全部">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+    </button>
+    <div class="icon-pop-wrap">
+      <button type="button" class="icon-btn" data-pop-toggle="wsHeaderMenu" title="更多操作" aria-label="更多操作">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+      </button>
+      <div class="icon-pop icon-menu" id="wsHeaderMenu" hidden>
+        <button type="button" data-ws-menu="reset-custom">重置自定义内容</button>
+        <button type="button" data-ws-menu="reset-prompt">重置 Prompt</button>
+        <button type="button" class="danger" data-ws-menu="clear-all">清除全部</button>
+      </div>
     </div>
   </div>
+</header>
 
-  <!-- 右侧预览区 -->
-  <div class="workshop-preview">
-    <div class="ws-preview-block">
-      <div class="ws-preview-header">
-        <label>Positive Prompt</label>
-        <button class="btn-copy" onclick="copyPrompt('positive')">复制</button>
+<div class="ws-workbench" id="wsWorkbench">
+<div class="ws-layout">
+  <!-- 左侧配方区 -->
+  <aside class="ws-recipe-panel">
+    <div class="ws-panel-title">配方</div>
+
+    <div class="ws-field">
+      <label for="ws-char">角色</label>
+      <div class="ws-select-wrap">
+        <select id="ws-char" class="ws-cat-char" onchange="saveWorkshopSelect(this); onCharChange()">
+          <option value="" disabled>-- 选择角色 --</option>
+          {% for character in characters %}
+          <option value="{{ character.id }}">{{ character.name }}{% if character.lora %} [{{ character.lora }}]{% endif %}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="ws-clear" data-clear="ws-char" title="清除选择" onclick="clearWsSelect('ws-char')" hidden>×</button>
+      </div>
+    </div>
+
+    <div class="ws-field" id="ws-outfit-row" hidden>
+      <label for="ws-outfit">服装</label>
+      <div class="ws-select-wrap">
+        <select id="ws-outfit" class="ws-cat-outfit" onchange="saveWorkshopSelect(this); buildPrompt()">
+          <option value="" disabled>-- 选择服装 --</option>
+        </select>
+        <button type="button" class="ws-clear" data-clear="ws-outfit" title="清除选择" onclick="clearWsSelect('ws-outfit')" hidden>×</button>
+      </div>
+    </div>
+
+    <div class="ws-field">
+      <label for="ws-artist">画师串</label>
+      <div class="ws-select-wrap">
+        <select id="ws-artist" class="ws-cat-artist" onchange="saveWorkshopSelect(this); buildPrompt()">
+          <option value="" disabled>-- 选择画师串 --</option>
+          {% for recipe in recipes if recipe.type == 'artist_mix' %}
+          <option value="{{ recipe.id }}">{{ recipe.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="ws-clear" data-clear="ws-artist" title="清除选择" onclick="clearWsSelect('ws-artist')" hidden>×</button>
+      </div>
+    </div>
+
+    <div class="ws-field">
+      <label for="ws-scene">场景</label>
+      <div class="ws-select-wrap">
+        <select id="ws-scene" class="ws-cat-scene" onchange="saveWorkshopSelect(this); buildPrompt()">
+          <option value="" disabled>-- 选择场景 --</option>
+          {% for recipe in recipes if recipe.type == 'scene' %}
+          <option value="{{ recipe.id }}">{{ recipe.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="ws-clear" data-clear="ws-scene" title="清除选择" onclick="clearWsSelect('ws-scene')" hidden>×</button>
+      </div>
+    </div>
+
+    <div class="ws-field">
+      <label for="ws-negative">负面模板</label>
+      <div class="ws-select-wrap">
+        <select id="ws-negative" class="ws-cat-neg" onchange="saveWorkshopSelect(this); buildPrompt()">
+          <option value="" disabled>-- 选择负面模板 --</option>
+          {% for recipe in recipes if recipe.type == 'negative' %}
+          <option value="{{ recipe.id }}">{{ recipe.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="ws-clear" data-clear="ws-negative" title="清除选择" onclick="clearWsSelect('ws-negative')" hidden>×</button>
+      </div>
+    </div>
+
+    <div class="ws-divider"></div>
+    <div class="ws-panel-title">自定义补充</div>
+
+    <button type="button" class="ws-custom-toggle" data-custom-toggle="pos">+ 添加 Positive</button>
+    <div class="ws-custom-area" id="ws-custom-pos-area" hidden>
+      <textarea id="ws-custom-pos" class="ws-cat-custom" rows="2" placeholder="额外正面 tag（追加到末尾）" oninput="buildPrompt(); sessionStorage.setItem('_persist_ws-custom-pos', this.value)"></textarea>
+      <button type="button" class="btn-sm" onclick="importFromTagLib()">从 Tag库 导入已选</button>
+    </div>
+
+    <button type="button" class="ws-custom-toggle" data-custom-toggle="neg">+ 添加 Negative</button>
+    <div class="ws-custom-area" id="ws-custom-neg-area" hidden>
+      <textarea id="ws-custom-neg" class="ws-cat-custom-neg" rows="2" placeholder="额外负面 tag（追加到末尾）" oninput="buildPrompt(); sessionStorage.setItem('_persist_ws-custom-neg', this.value)"></textarea>
+    </div>
+  </aside>
+
+  <!-- 右侧 Prompt 工作区 -->
+  <main class="ws-workspace">
+    <div class="ws-filter-chips" id="wsFilterChips">
+      <button type="button" class="ws-chip ws-chip-char" data-filter-cat="char">角色</button>
+      <button type="button" class="ws-chip ws-chip-outfit" data-filter-cat="outfit">服装</button>
+      <button type="button" class="ws-chip ws-chip-artist" data-filter-cat="artist">画师串</button>
+      <button type="button" class="ws-chip ws-chip-scene" data-filter-cat="scene">场景</button>
+      <button type="button" class="ws-chip ws-chip-custom" data-filter-cat="custom">自定义</button>
+      <button type="button" class="ws-chip ws-chip-negative" data-filter-cat="negative">负面</button>
+    </div>
+
+    <section class="ws-editor-block" data-editor="positive">
+      <div class="ws-editor-head">
+        <span class="ws-editor-label">Positive Prompt</span>
+        <span class="ws-editor-stats" data-stats="positive"></span>
+        <span class="ws-edited-badge" data-edited-badge="positive" hidden>已编辑</span>
+        <div class="ws-editor-actions">
+          <button type="button" class="icon-btn" onclick="copyPrompt('positive')" title="复制 Positive Prompt" aria-label="复制 Positive Prompt">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="ws-edited-banner" data-edited-banner="positive" hidden>
+        <span>配方已变化，当前为手工编辑版本</span>
+        <button type="button" data-ws-action="restore" data-target="positive">恢复自动</button>
       </div>
       <pre id="ws-positive-preview" class="ws-preview-text"></pre>
-    </div>
+    </section>
 
-    <div class="ws-preview-block">
-      <div class="ws-preview-header">
-        <label>Negative Prompt</label>
-        <button class="btn-copy" onclick="copyPrompt('negative')">复制</button>
+    <section class="ws-editor-block" data-editor="negative">
+      <div class="ws-editor-head">
+        <span class="ws-editor-label">Negative Prompt</span>
+        <span class="ws-editor-stats" data-stats="negative"></span>
+        <span class="ws-edited-badge" data-edited-badge="negative" hidden>已编辑</span>
+        <div class="ws-editor-actions">
+          <button type="button" class="icon-btn" onclick="copyPrompt('negative')" title="复制 Negative Prompt" aria-label="复制 Negative Prompt">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="ws-edited-banner" data-edited-banner="negative" hidden>
+        <span>配方已变化，当前为手工编辑版本</span>
+        <button type="button" data-ws-action="restore" data-target="negative">恢复自动</button>
       </div>
       <pre id="ws-negative-preview" class="ws-preview-text negative"></pre>
-    </div>
+    </section>
+  </main>
+</div>
 
-    <div class="ws-preview-block">
-      <div class="ws-preview-header">
-        <label>完整复制（正+负）</label>
-        <button class="btn-copy" onclick="copyBoth()">复制全部</button>
+<!-- AI 助手：宽屏停靠在同一工作台，窄屏降级为 overlay -->
+<aside class="ws-copilot-pane" id="copilotDrawer" aria-label="AI 提示词助手" aria-hidden="true">
+  <div class="ws-copilot-resizer" id="copilotResizer" role="separator" aria-orientation="vertical" aria-label="拖动调整助手宽度" title="拖动调整助手宽度" hidden></div>
+  <header class="ws-copilot-head">
+    <h2>AI 提示词助手</h2>
+    <button type="button" class="ws-copilot-close" id="copilotClose" title="收起助手面板" aria-label="收起助手面板">×</button>
+  </header>
+  <div id="workshop-copilot-root"></div>
+</aside>
+</div>
+
+<div class="ws-copilot-mask" id="copilotMask" hidden></div>
+
+<!-- LLM 设置：工坊内嵌，复用既有 /llm/settings -->
+<dialog class="folder-dialog" id="wsLlmSettingsDialog" aria-labelledby="wsLlmSettingsTitle">
+  <form method="post" action="/llm/settings">
+    <div class="folder-dialog-header">
+      <div>
+        <span class="folder-dialog-eyebrow">OpenAI 兼容</span>
+        <h2 id="wsLlmSettingsTitle">LLM 设置</h2>
       </div>
+      <button type="button" class="folder-dialog-close" onclick="document.getElementById('wsLlmSettingsDialog').close()" aria-label="关闭">×</button>
+    </div>
+    <p class="folder-dialog-hint">工坊 Copilot 对话已承担辅助分类与提示词建议。此处只保存连接配置，与抽卡共用同一份服务端设置。</p>
+    <label class="folder-dialog-field">Base URL
+      <input type="text" name="base_url" value="{{ settings.base_url if settings else '' }}" placeholder="例如 http://127.0.0.1:11434/v1" autocomplete="off">
+    </label>
+    <label class="folder-dialog-field">API Key
+      <input type="text" name="api_key" value="{{ settings.api_key if settings else '' }}" placeholder="API Key" autocomplete="off">
+    </label>
+    <label class="folder-dialog-field">模型名
+      <input type="text" name="model" value="{{ settings.model if settings else '' }}" placeholder="模型名" autocomplete="off">
+    </label>
+    <label class="folder-dialog-field">默认 system prompt
+      <textarea name="default_system_prompt" rows="6" placeholder="可选，作为默认 system prompt">{{ settings.default_system_prompt if settings else '' }}</textarea>
+    </label>
+    <input type="hidden" name="next" value="/workshop">
+    <div class="folder-dialog-actions">
+      <button type="button" class="btn-sm" onclick="document.getElementById('wsLlmSettingsDialog').close()">关闭</button>
+      <button type="submit">保存设置</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 清除全部二次确认 -->
+<dialog class="folder-dialog" id="wsClearDialog">
+  <div class="folder-dialog-body">
+    <div class="folder-dialog-header">
+      <div>
+        <span class="folder-dialog-eyebrow danger">不可撤销</span>
+        <h2>清除全部</h2>
+      </div>
+      <button type="button" class="folder-dialog-close" onclick="document.getElementById('wsClearDialog').close()">×</button>
+    </div>
+    <p>将清空全部配方选择、自定义补充与手工编辑内容，确定继续？</p>
+    <div class="folder-dialog-actions">
+      <button type="button" class="btn-sm" onclick="document.getElementById('wsClearDialog').close()">取消</button>
+      <button type="button" class="btn-danger" onclick="confirmClearAll()">确认清除</button>
     </div>
   </div>
-</div>
+</dialog>
 
-<!-- LLM 优化弹窗 -->
-<div id="llm-panel" class="floating-panel" style="display:none">
-  <div class="panel-header">
-    <span>AI 优化结果</span>
-    <button class="panel-close" onclick="document.getElementById('llm-panel').style.display='none'">&times;</button>
-  </div>
-  <div class="vertical" style="padding:14px 16px">
-    <pre id="llm-result" class="ws-preview-text" style="max-height:300px;overflow-y:auto"></pre>
-    <button onclick="applyLLMResult()">应用到自定义补充</button>
-  </div>
-</div>
-
+<link rel="stylesheet" href="/static/copilot/copilot.css?v=80">
+<script src="/static/copilot/copilot.js?v=80"></script>
+<script src="/static/workshop-copilot.js?v=76"></script>
 <script>
-let charsData = [];
-let recipesData = { artist_mix: [], scene: [], negative: [], params: [] };
+var charsData = {{ characters|tojson }};
+var recipesData = { artist_mix: [], scene: [], negative: [], params: [] };
 
-async function loadData() {
-  const [chars, recipes] = await Promise.all([
-    fetch('/api/characters').then(r => r.json()),
-    fetch('/api/recipes').then(r => r.json()),
-  ]);
-  charsData = chars;
-  recipesData = { artist_mix: [], scene: [], negative: [], params: [] };
-  recipes.forEach(r => {
-    if (recipesData[r.type]) recipesData[r.type].push(r);
-  });
-  populateSelects();
-}
+{{ recipes|tojson }}.forEach(recipe => {
+  if (recipesData[recipe.type]) recipesData[recipe.type].push(recipe);
+});
 
-function populateSelects() {
-  const charSel = document.getElementById('ws-char');
-  charsData.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.name + (c.lora ? ` [${c.lora}]` : '');
-    charSel.appendChild(opt);
-  });
+// 双轨 dirty：null = 跟随自动生成；非 null = 手工编辑文本（配方变化不再覆盖）
+var editedTrack = { positive: null, negative: null };
+var editedBase = { positive: null, negative: null };
+var lastParts = { positive: [], negative: [] };
+var activeFilters = new Set();
 
-  populateRecipeSelect('ws-artist', recipesData.artist_mix);
-  populateRecipeSelect('ws-scene', recipesData.scene);
-  populateRecipeSelect('ws-negative', recipesData.negative);
-}
+function preOf(type) { return document.getElementById('ws-' + type + '-preview'); }
+function suffixOf(type) { return type === 'positive' ? 'pos' : 'neg'; }
+function editedKey(type) { return type === 'positive' ? '_persist_ws-edited-pos' : '_persist_ws-edited-neg'; }
 
-function populateRecipeSelect(id, items) {
-  const sel = document.getElementById(id);
-  items.forEach(r => {
-    const opt = document.createElement('option');
-    opt.value = r.id;
-    opt.textContent = r.name;
-    sel.appendChild(opt);
-  });
+function joinParts(parts) {
+  return parts.map(p => p.text).join(',\n');
 }
 
 function onCharChange() {
   const charId = parseInt(document.getElementById('ws-char').value);
   const outfitSel = document.getElementById('ws-outfit');
-  outfitSel.innerHTML = '<option value="">-- 选择服装 --</option>';
+  const outfitRow = document.getElementById('ws-outfit-row');
+  outfitSel.innerHTML = '<option value="" disabled>-- 选择服装 --</option>';
   const char = charsData.find(c => c.id === charId);
   if (char && char.outfits.length > 0) {
     char.outfits.forEach(o => {
@@ -139,11 +260,96 @@ function onCharChange() {
       opt.textContent = o.name;
       outfitSel.appendChild(opt);
     });
-    outfitSel.style.display = '';
+    outfitRow.hidden = false;
   } else {
-    outfitSel.style.display = 'none';
+    outfitRow.hidden = true;
   }
   buildPrompt();
+}
+
+// 有值时显示 × 清除按钮并隐藏占位项；清除即回到占位项并重新拼装
+function updateClearButtons() {
+  document.querySelectorAll('.ws-select-wrap select').forEach(sel => {
+    const placeholder = sel.querySelector('option[value=""]');
+    if (placeholder) placeholder.hidden = !!sel.value;
+  });
+  document.querySelectorAll('.ws-clear').forEach(btn => {
+    btn.hidden = !document.getElementById(btn.dataset.clear).value;
+  });
+}
+
+function clearWsSelect(id) {
+  const el = document.getElementById(id);
+  el.value = '';
+  sessionStorage.removeItem('_persist_' + id);
+  if (id === 'ws-char') onCharChange(); else buildPrompt();
+  updateClearButtons();
+}
+
+// 提示词按来源类别分段着色；span + 文本节点分隔，textContent 与着色前逐字符一致
+function renderPreview(el, parts) {
+  el.textContent = '';
+  parts.forEach((p, i) => {
+    if (i) el.appendChild(document.createTextNode(',\n'));
+    const s = document.createElement('span');
+    s.className = 'ws-hl ws-hl-' + p.cat;
+    s.textContent = p.text;
+    s.title = p.label;
+    s.setAttribute('data-cat', p.cat);
+    el.appendChild(s);
+  });
+}
+
+// 手改后来源映射已失效，整段染中性色，不再假装能区分分类
+function renderEdited(el, text) {
+  el.textContent = '';
+  const s = document.createElement('span');
+  s.className = 'ws-hl ws-hl-edited';
+  s.textContent = text;
+  el.appendChild(s);
+}
+
+function renderEmptyHint(el, type) {
+  el.textContent = '';
+  const s = document.createElement('span');
+  s.className = 'ws-empty';
+  s.textContent = type === 'positive' ? '选择左侧配方后开始拼装，或点击此处直接书写' : '暂无负面内容，点击此处直接书写';
+  el.appendChild(s);
+}
+
+function renderTrack(type) {
+  const pre = preOf(type);
+  if (editedTrack[type] !== null) {
+    renderEdited(pre, editedTrack[type]);
+  } else if (lastParts[type].length) {
+    renderPreview(pre, lastParts[type]);
+  } else {
+    renderEmptyHint(pre, type);
+  }
+  updateEditedUI(type);
+  updateStats(type);
+  applyFilters();
+}
+
+function updateEditedUI(type) {
+  const badge = document.querySelector('[data-edited-badge="' + type + '"]');
+  const banner = document.querySelector('[data-edited-banner="' + type + '"]');
+  const edited = editedTrack[type] !== null;
+  if (badge) badge.hidden = !edited;
+  if (banner) banner.hidden = !(edited && joinParts(lastParts[type]) !== editedBase[type]);
+}
+
+// Prompt 唯一取值口：手改优先，否则取自动拼接；空态时 pre 里是占位提示，不能当内容读
+function promptText(type) {
+  return editedTrack[type] !== null ? editedTrack[type] : joinParts(lastParts[type]);
+}
+
+function updateStats(type) {
+  const el = document.querySelector('[data-stats="' + type + '"]');
+  if (!el) return;
+  const text = promptText(type);
+  const tags = text.split(',').map(s => s.trim()).filter(Boolean).length;
+  el.textContent = tags ? tags + ' tags · ' + text.length + ' chars' : '';
 }
 
 function buildPrompt() {
@@ -154,110 +360,385 @@ function buildPrompt() {
   const charId = parseInt(document.getElementById('ws-char').value);
   const char = charsData.find(c => c.id === charId);
   if (char) {
-    if (char.lora) parts.push(`<lora:${char.lora}:${char.lora_weight}>`);
-    if (char.trigger_words) parts.push(char.trigger_words);
-    if (char.appearance) parts.push(char.appearance);
+    if (char.lora) parts.push({text: `<lora:${char.lora}:${char.lora_weight}>`, cat: 'char', label: '角色'});
+    if (char.trigger_words) parts.push({text: char.trigger_words, cat: 'char', label: '角色'});
+    if (char.appearance) parts.push({text: char.appearance, cat: 'char', label: '角色'});
   }
 
   // 服装
   const outfitId = parseInt(document.getElementById('ws-outfit').value);
   if (char && outfitId) {
     const outfit = char.outfits.find(o => o.id === outfitId);
-    if (outfit && outfit.tags) parts.push(outfit.tags);
+    if (outfit && outfit.tags) parts.push({text: outfit.tags, cat: 'outfit', label: '服装'});
   }
 
   // 画师串
   const artistId = parseInt(document.getElementById('ws-artist').value);
   const artist = recipesData.artist_mix.find(r => r.id === artistId);
-  if (artist) parts.push(artist.positive_prompt);
+  if (artist) parts.push({text: artist.positive_prompt, cat: 'artist', label: '画师串'});
 
   // 场景
   const sceneId = parseInt(document.getElementById('ws-scene').value);
   const scene = recipesData.scene.find(r => r.id === sceneId);
   if (scene) {
-    if (scene.positive_prompt) parts.push(scene.positive_prompt);
-    if (scene.negative_prompt) negParts.push(scene.negative_prompt);
+    if (scene.positive_prompt) parts.push({text: scene.positive_prompt, cat: 'scene', label: '场景'});
+    if (scene.negative_prompt) negParts.push({text: scene.negative_prompt, cat: 'scene-neg', label: '场景负面'});
   }
 
   // 负面模板
   const negId = parseInt(document.getElementById('ws-negative').value);
   const neg = recipesData.negative.find(r => r.id === negId);
-  if (neg && neg.negative_prompt) negParts.push(neg.negative_prompt);
+  if (neg && neg.negative_prompt) negParts.push({text: neg.negative_prompt, cat: 'neg', label: '负面模板'});
 
   // 自定义
   const customPos = document.getElementById('ws-custom-pos').value.trim();
   const customNeg = document.getElementById('ws-custom-neg').value.trim();
-  if (customPos) parts.push(customPos);
-  if (customNeg) negParts.push(customNeg);
+  if (customPos) parts.push({text: customPos, cat: 'custom', label: '自定义补充'});
+  if (customNeg) negParts.push({text: customNeg, cat: 'custom-neg', label: '自定义负面'});
 
-  document.getElementById('ws-positive-preview').textContent = parts.join(',\n');
-  document.getElementById('ws-negative-preview').textContent = negParts.join(',\n');
+  lastParts.positive = parts;
+  lastParts.negative = negParts;
+  renderTrack('positive');
+  renderTrack('negative');
+  updateClearButtons();
+  if (window.WorkshopAPI && window.WorkshopAPI.emitCopilotContext) window.WorkshopAPI.emitCopilotContext();
+}
+
+// 点击预览区即进入编辑；Ctrl+Enter 或失焦完成，Esc 取消
+function startEdit(type) {
+  const pre = preOf(type);
+  if (pre.dataset.editing === '1') return;
+  const ta = document.createElement('textarea');
+  ta.className = 'ws-edit-area ws-preview-text' + (type === 'negative' ? ' negative' : '');
+  ta.value = promptText(type);
+  pre.dataset.editing = '1';
+  pre.style.display = 'none';
+  pre.after(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    finishEdit(type, ta);
+  };
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      finished = true;
+      ta.remove();
+      pre.style.display = '';
+      delete pre.dataset.editing;
+    }
+  });
+  // 失焦延迟完成：让 header 按钮点击先注册，避免被 blur 抢先
+  ta.addEventListener('blur', () => setTimeout(finish, 120));
+}
+
+function finishEdit(type, ta) {
+  const pre = preOf(type);
+  const text = ta.value;
+  const generated = joinParts(lastParts[type]);
+  if (text !== generated) {
+    editedTrack[type] = text;
+    editedBase[type] = generated;
+    sessionStorage.setItem(editedKey(type), JSON.stringify({ text: text, base: generated }));
+  } else if (editedTrack[type] !== null) {
+    // 手工改回与自动生成一致，视同放弃手改，重新跟随配方
+    editedTrack[type] = null;
+    editedBase[type] = null;
+    sessionStorage.removeItem(editedKey(type));
+  }
+  ta.remove();
+  pre.style.display = '';
+  delete pre.dataset.editing;
+  renderTrack(type);
+  if (window.WorkshopAPI && window.WorkshopAPI.emitCopilotContext) window.WorkshopAPI.emitCopilotContext();
+}
+
+function restoreAuto(type) {
+  editedTrack[type] = null;
+  editedBase[type] = null;
+  sessionStorage.removeItem(editedKey(type));
+  renderTrack(type);
 }
 
 function copyPrompt(type) {
-  const el = document.getElementById(`ws-${type}-preview`);
-  navigator.clipboard.writeText(el.textContent).then(() => {
-    const btn = el.previousElementSibling ? el.parentElement.querySelector('.btn-copy') : null;
-    if (btn) { btn.textContent = '已复制'; setTimeout(() => btn.textContent = '复制', 1200); }
-  });
+  navigator.clipboard.writeText(promptText(type)).then(() => toast('已复制'));
 }
 
 function copyBoth() {
-  const pos = document.getElementById('ws-positive-preview').textContent;
-  const neg = document.getElementById('ws-negative-preview').textContent;
-  const text = `Positive:\n${pos}\n\nNegative:\n${neg}`;
-  navigator.clipboard.writeText(text);
+  const text = `Positive:\n${promptText('positive')}\n\nNegative:\n${promptText('negative')}`;
+  navigator.clipboard.writeText(text).then(() => toast('已复制全部'));
 }
 
-async function optimizeWithLLM() {
-  const pos = document.getElementById('ws-positive-preview').textContent;
-  if (!pos) { alert('请先拼装提示词'); return; }
-  const panel = document.getElementById('llm-panel');
-  const result = document.getElementById('llm-result');
-  result.textContent = '请求中...';
-  panel.style.display = 'flex';
-  try {
-    const resp = await fetch('/api/llm/optimize', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prompt: pos}),
-    });
-    const data = await resp.json();
-    if (data.error) { result.textContent = '错误: ' + data.error; }
-    else { result.textContent = data.result; }
-  } catch(e) { result.textContent = '请求失败: ' + e.message; }
-}
-
-function applyLLMResult() {
-  const text = document.getElementById('llm-result').textContent;
-  if (text && !text.startsWith('错误') && !text.startsWith('请求')) {
-    document.getElementById('ws-custom-pos').value = text;
-    buildPrompt();
-  }
-  document.getElementById('llm-panel').style.display = 'none';
-}
-
-// 悬浮窗拖拽
-document.querySelectorAll('.floating-panel .panel-header').forEach(header => {
-  let isDragging = false, offsetX, offsetY;
-  header.addEventListener('mousedown', e => {
-    isDragging = true;
-    const panel = header.closest('.floating-panel');
-    offsetX = e.clientX - panel.offsetLeft;
-    offsetY = e.clientY - panel.offsetTop;
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', () => { isDragging = false; document.removeEventListener('mousemove', onMove); }, {once: true});
+function confirmClearAll() {
+  ['ws-char','ws-outfit','ws-artist','ws-scene','ws-negative'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; sessionStorage.removeItem('_persist_' + id); }
   });
-  function onMove(e) {
-    if (!isDragging) return;
-    const panel = header.closest('.floating-panel');
-    panel.style.left = (e.clientX - offsetX) + 'px';
-    panel.style.top = (e.clientY - offsetY) + 'px';
-    panel.style.right = 'auto';
-    panel.style.transform = 'none';
+  document.getElementById('ws-outfit-row').hidden = true;
+  ['ws-custom-pos','ws-custom-neg'].forEach(id => {
+    const el = document.getElementById(id);
+    el.value = '';
+    sessionStorage.removeItem('_persist_' + id);
+  });
+  editedTrack.positive = null;
+  editedTrack.negative = null;
+  editedBase.positive = null;
+  editedBase.negative = null;
+  sessionStorage.removeItem('_persist_ws-edited-pos');
+  sessionStorage.removeItem('_persist_ws-edited-neg');
+  document.getElementById('wsClearDialog').close();
+  buildPrompt();
+  toast('已清除全部');
+}
+
+function handleWsMenu(action) {
+  if (action === 'reset-custom') {
+    ['ws-custom-pos','ws-custom-neg'].forEach(id => {
+      document.getElementById(id).value = '';
+      sessionStorage.removeItem('_persist_' + id);
+    });
+    buildPrompt();
+    toast('已清空自定义补充');
+  } else if (action === 'reset-prompt') {
+    editedTrack.positive = null;
+    editedTrack.negative = null;
+    editedBase.positive = null;
+    editedBase.negative = null;
+    sessionStorage.removeItem('_persist_ws-edited-pos');
+    sessionStorage.removeItem('_persist_ws-edited-neg');
+    buildPrompt();
+    toast('已恢复自动生成');
+  } else if (action === 'clear-all') {
+    document.getElementById('wsClearDialog').showModal();
   }
+}
+
+function handleEditorAction(action, target) {
+  if (action === 'restore') {
+    restoreAuto(target);
+    toast('已恢复自动生成');
+  }
+}
+
+// 分类过滤：scene-neg 归入场景、custom-neg 归入自定义、neg 归入负面
+var FILTER_ALIAS = { 'scene-neg': 'scene', 'custom-neg': 'custom', 'neg': 'negative' };
+function normCat(cat) { return FILTER_ALIAS[cat] || cat; }
+
+function applyFilters() {
+  const active = activeFilters.size > 0;
+  document.querySelectorAll('#ws-positive-preview .ws-hl, #ws-negative-preview .ws-hl').forEach(span => {
+    const cat = normCat(span.getAttribute('data-cat') || '');
+    span.classList.toggle('ws-dim', active && !activeFilters.has(cat));
+  });
+  document.querySelectorAll('.ws-chip').forEach(chip => {
+    chip.classList.toggle('is-active', activeFilters.has(chip.dataset.filterCat));
+  });
+}
+
+// 诊断列表点击定位：命中首个包含该文本的着色段并脉冲闪烁
+function highlightTag(target, tagText) {
+  const pre = preOf(target === 'negative' ? 'negative' : 'positive');
+  const spans = pre.querySelectorAll('.ws-hl');
+  for (const span of spans) {
+    if (span.textContent.includes(tagText)) {
+      span.classList.remove('ws-flash');
+      void span.offsetWidth;
+      span.classList.add('ws-flash');
+      span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      setTimeout(() => span.classList.remove('ws-flash'), 1300);
+      return true;
+    }
+  }
+  return false;
+}
+
+var toastTimer = null;
+function toast(msg) {
+  let el = document.querySelector('.ws-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'ws-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+function importFromTagLib() {
+  const saved = sessionStorage.getItem('_persist_selectedTags') || sessionStorage.getItem('wardrobe_selected_tags') || '';
+  const cleaned = saved.split(',').map(s => s.trim()).filter(Boolean).join(', ');
+  if (!cleaned) {
+    toast('Tag库 暂无已选 tag，请先在 Tag库 中选择');
+    return;
+  }
+  const box = document.getElementById('ws-custom-pos');
+  const existing = box.value.trim();
+  box.value = existing ? existing + ', ' + cleaned : cleaned;
+  sessionStorage.setItem('_persist_ws-custom-pos', box.value);
+  setCustomOpen('pos', true);
+  saveCustomOpen();
+  buildPrompt();
+}
+
+function setCustomOpen(side, open) {
+  const area = document.getElementById('ws-custom-' + side + '-area');
+  const toggle = document.querySelector('[data-custom-toggle="' + side + '"]');
+  area.hidden = !open;
+  if (toggle) toggle.classList.toggle('is-open', open);
+}
+
+function saveCustomOpen() {
+  sessionStorage.setItem('_persist_ws-custom-open', JSON.stringify({
+    pos: !document.getElementById('ws-custom-pos-area').hidden,
+    neg: !document.getElementById('ws-custom-neg-area').hidden,
+  }));
+}
+
+function restoreWorkshopState() {
+  ['ws-char','ws-outfit','ws-artist','ws-scene','ws-negative'].forEach(id => {
+    const saved = sessionStorage.getItem('_persist_' + id);
+    if (saved) {
+      const el = document.getElementById(id);
+      if (el) { el.value = saved; }
+    }
+  });
+  const charVal = document.getElementById('ws-char').value;
+  if (charVal) {
+    onCharChange();
+    // onCharChange 重建了服装选项，恢复保存在其后
+    const savedOutfit = sessionStorage.getItem('_persist_ws-outfit');
+    if (savedOutfit) document.getElementById('ws-outfit').value = savedOutfit;
+  }
+  ['ws-custom-pos','ws-custom-neg'].forEach(id => {
+    const saved = sessionStorage.getItem('_persist_' + id);
+    if (saved) document.getElementById(id).value = saved;
+  });
+  ['positive', 'negative'].forEach(type => {
+    const raw = sessionStorage.getItem(editedKey(type));
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw);
+      editedTrack[type] = data.text;
+      editedBase[type] = data.base;
+    } catch (e) {
+      sessionStorage.removeItem(editedKey(type));
+    }
+  });
+  try {
+    const open = JSON.parse(sessionStorage.getItem('_persist_ws-custom-open') || '{}');
+    if (open.pos) setCustomOpen('pos', true);
+    if (open.neg) setCustomOpen('neg', true);
+  } catch (e) {}
+  if (document.getElementById('ws-custom-pos').value.trim()) setCustomOpen('pos', true);
+  if (document.getElementById('ws-custom-neg').value.trim()) setCustomOpen('neg', true);
+  buildPrompt();
+}
+
+function saveWorkshopSelect(el) {
+  sessionStorage.setItem('_persist_' + el.id, el.value);
+}
+
+// ··· 图标菜单（图库页 pop 逻辑在 folder-management.js，本页未加载，自行实现）
+function closeAllPops() {
+  document.querySelectorAll('.icon-pop').forEach(p => { p.hidden = true; });
+}
+document.querySelectorAll('[data-pop-toggle]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const pop = document.getElementById(btn.dataset.popToggle);
+    const willOpen = pop.hidden;
+    closeAllPops();
+    pop.hidden = !willOpen;
+  });
+});
+document.querySelectorAll('.icon-pop button').forEach(item => {
+  item.addEventListener('click', () => closeAllPops());
+});
+document.querySelectorAll('[data-ws-menu]').forEach(item => {
+  item.addEventListener('click', () => handleWsMenu(item.dataset.wsMenu));
+});
+document.querySelectorAll('[data-ws-action]').forEach(item => {
+  item.addEventListener('click', () => handleEditorAction(item.dataset.wsAction, item.dataset.target));
+});
+document.querySelectorAll('.ws-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const cat = chip.dataset.filterCat;
+    if (activeFilters.has(cat)) activeFilters.delete(cat); else activeFilters.add(cat);
+    applyFilters();
+  });
+});
+document.querySelectorAll('[data-custom-toggle]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const side = btn.dataset.customToggle;
+    const area = document.getElementById('ws-custom-' + side + '-area');
+    setCustomOpen(side, area.hidden);
+    saveCustomOpen();
+  });
+});
+['positive', 'negative'].forEach(type => {
+  preOf(type).addEventListener('click', () => startEdit(type));
 });
 
-loadData();
+// 顶层必须用 var：SPA 重入内联脚本会整体重跑，const/let 重复声明会让整段脚本解析期死亡
+var onDocClick = () => closeAllPops();
+var onEscKey = e => { if (e.key === 'Escape') closeAllPops(); };
+document.addEventListener('click', onDocClick);
+document.addEventListener('keydown', onEscKey);
+
+// 供 workshop-copilot.js 对接的唯一入口
+window.WorkshopAPI = {
+  getPromptPayload() {
+    const recipe = {};
+    ['char','outfit','artist','scene','negative'].forEach(k => {
+      const v = document.getElementById('ws-' + k).value;
+      if (v) recipe[k + 'Id'] = parseInt(v);
+    });
+    return {
+      positive: promptText('positive'),
+      negative: promptText('negative'),
+      recipe: recipe,
+    };
+  },
+  // AI Apply 成功后该块落入手改轨，与手工编辑同一套 dirty 规则
+  applyEdited(target, text) {
+    const type = target === 'negative' ? 'negative' : 'positive';
+    editedTrack[type] = text;
+    editedBase[type] = joinParts(lastParts[type]);
+    sessionStorage.setItem(editedKey(type), JSON.stringify({ text: text, base: editedBase[type] }));
+    renderTrack(type);
+    if (window.WorkshopAPI && window.WorkshopAPI.emitCopilotContext) window.WorkshopAPI.emitCopilotContext();
+  },
+  highlightTag: highlightTag,
+  restoreAuto: restoreAuto,
+  toast: toast,
+  emitCopilotContext() {
+    if (window.WorkshopCopilot && window.WorkshopCopilot.emitContext) window.WorkshopCopilot.emitContext();
+  },
+};
+
+window.__wardrobePageCleanup = function () {
+  document.removeEventListener('click', onDocClick);
+  document.removeEventListener('keydown', onEscKey);
+  if (window.WorkshopCopilot && window.WorkshopCopilot.destroy) window.WorkshopCopilot.destroy();
+};
+
+restoreWorkshopState();
+if (window.WorkshopCopilot && window.WorkshopCopilot.init) {
+  window.WorkshopCopilot.init({
+    workbench: document.getElementById('wsWorkbench'),
+    drawer: document.getElementById('copilotDrawer'),
+    mask: document.getElementById('copilotMask'),
+    openBtn: document.getElementById('wsCopilotBtn'),
+    closeBtn: document.getElementById('copilotClose'),
+    island: document.getElementById('workshop-copilot-root'),
+    resizer: document.getElementById('copilotResizer'),
+  });
+}
 </script>
 {% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1>LoRA 库</h1>
+  <p>上传 .safetensors 即解析（只读文件头，大文件不过网），可同时选同名 .civitai.info/.json 与预览图</p>
+  <div class="page-head-actions">
+    <button type="button" id="loraUploadToggle">＋ 上传 LoRA</button>
+  </div>
+</div>
+{% if message %}<p class="notice notice-{{ message_type or 'info' }}">{{ message }}</p>{% endif %}
+
+<div class="lora-upload" id="loraUpload"{% if cards %} hidden{% endif %}>
+  <div class="lora-upload-inner">
+    <p>拖入或选择 <b>.safetensors</b> 文件即解析（只读取文件头，大文件不过网）；可同时选择同名 <b>.civitai.info/.json</b> 与预览图补充信息。</p>
+    <input type="file" id="loraFileInput" multiple accept=".safetensors,.json,.info,.png,.jpg,.jpeg,.webp">
+    <p class="lora-upload-status" id="loraUploadStatus"></p>
+  </div>
+</div>
+
+{% if not cards %}
+<p class="empty-hint">还没有 LoRA 卡，上传一个 .safetensors 试试。</p>
+{% endif %}
+
+<div class="lora-grid">
+  {% for card in cards %}
+  <div class="lora-card" data-lora-id="{{ card.id }}">
+    <div class="lora-card-preview">
+      {% if card.preview_image %}
+      <img src="/lora-previews/{{ card.preview_image }}" alt="{{ card.name }}" loading="lazy">
+      {% else %}
+      <div class="lora-card-placeholder">LoRA</div>
+      {% endif %}
+      <span class="lora-badge lora-badge-{{ card.base_model | lower | replace('.', '-') }}">{{ card.base_model }}</span>
+    </div>
+    <div class="lora-card-body">
+      <h3 title="{{ card.filename }}">{{ card.name }}</h3>
+      <div class="lora-card-meta">
+        {% if card.net_dim %}<span>dim {{ card.net_dim }}</span>{% endif %}
+        <span>权重 {{ '%.2f' | format(card.suggested_weight) }}</span>
+      </div>
+      {% if card.trigger_words %}
+      <div class="lora-card-triggers">
+        <code>{{ card.trigger_words }}</code>
+        <button type="button" class="btn-sm" onclick="copyLoraTriggers(this)" data-triggers="{{ card.trigger_words }}">复制触发词</button>
+      </div>
+      {% else %}
+      <p class="lora-card-no-trigger">未解析到触发词</p>
+      {% endif %}
+      {% if card.civitai_text %}
+      <details class="lora-card-details">
+        <summary>Civitai 描述</summary>
+        <p>{{ card.civitai_text }}</p>
+      </details>
+      {% endif %}
+      {% if card.tag_frequency %}
+      <details class="lora-card-details">
+        <summary>标签频率 Top</summary>
+        <pre class="lora-tag-freq" data-tag-frequency="{{ card.tag_frequency }}"></pre>
+      </details>
+      {% endif %}
+      {% if card.notes %}<p class="lora-card-notes">{{ card.notes }}</p>{% endif %}
+      <div class="lora-card-actions">
+        <label class="btn-sm lora-preview-btn">
+          传预览图
+          <input type="file" accept=".png,.jpg,.jpeg,.webp" hidden onchange="uploadLoraPreview(this, {{ card.id }})">
+        </label>
+        <form method="post" action="/loras/{{ card.id }}/delete" onsubmit="return confirm('删除 LoRA 卡「{{ card.name }}」？（不删除本地文件）')">
+          <button type="submit" class="btn-sm btn-danger">删除</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+// 只把 safetensors header（8 字节长度 + JSON）过网，大文件本体不上传
+async function readSafetensorsHeader(file) {
+  const lenBuf = await file.slice(0, 8).arrayBuffer();
+  const view = new DataView(lenBuf);
+  const headerLen = Number(view.getBigUint64(0, true));
+  const headerBuf = await file.slice(0, 8 + headerLen).arrayBuffer();
+  return new Uint8Array(headerBuf);
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function loraNameOf(filename) {
+  return filename.replace(/\.[^.]+$/, '');
+}
+
+async function postJSON(url, payload) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.error || ('请求失败 ' + resp.status));
+  return data;
+}
+
+async function uploadLoraFiles(fileList) {
+  const status = document.getElementById('loraUploadStatus');
+  const files = Array.from(fileList);
+  const safetensors = files.filter(f => f.name.toLowerCase().endsWith('.safetensors'));
+  const civitaiDocs = files.filter(f => /\.(civitai\.info|json)$/i.test(f.name));
+  const previews = files.filter(f => /\.(png|jpe?g|webp)$/i.test(f.name));
+
+  for (const file of safetensors) {
+    status.textContent = `解析 ${file.name} ...`;
+    try {
+      const header = await readSafetensorsHeader(file);
+      await postJSON('/api/loras/parse', {filename: file.name, header_b64: bytesToBase64(header)});
+    } catch (e) {
+      status.textContent = `${file.name}：${e.message}`;
+      return;
+    }
+  }
+  for (const file of civitaiDocs) {
+    const name = loraNameOf(file.name.replace(/\.civitai\.info$/i, ''));
+    status.textContent = `合并 ${file.name} ...`;
+    try {
+      await postJSON('/api/loras/civitai', {name, civitai_text: await file.text()});
+    } catch (e) { /* 无对应卡片时跳过，不中断整体 */ }
+  }
+  if (safetensors.length || civitaiDocs.length) {
+    location.reload();
+    return;
+  }
+  if (previews.length) status.textContent = '预览图请在对应卡片上用「传预览图」上传';
+}
+
+async function uploadLoraPreview(input, cardId) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  const resp = await fetch(`/api/loras/${cardId}/preview`, {method: 'POST', body: fd});
+  if (resp.ok) location.reload();
+  else alert((await resp.json()).error || '预览图上传失败');
+}
+
+function copyLoraTriggers(btn) {
+  navigator.clipboard.writeText(btn.dataset.triggers).then(() => {
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = '复制触发词', 1200);
+  });
+}
+
+// 标签频率 JSON 渲染为可读列表
+document.querySelectorAll('.lora-tag-freq').forEach(el => {
+  try {
+    const data = JSON.parse(el.dataset.tagFrequency || '{}');
+    el.textContent = Object.entries(data).map(([tag, count]) => `${tag} × ${count}`).join('\n');
+  } catch (e) { el.textContent = ''; }
+});
+
+var uploadBox = document.getElementById('loraUpload');
+var fileInput = document.getElementById('loraFileInput');
+var uploadToggle = document.getElementById('loraUploadToggle');
+// 「上传 LoRA」按钮展开/收起上传面板；有卡片时默认收起
+uploadToggle.addEventListener('click', () => { uploadBox.hidden = !uploadBox.hidden; });
+uploadBox.addEventListener('click', () => fileInput.click());
+uploadBox.addEventListener('dragover', e => { e.preventDefault(); uploadBox.classList.add('dragover'); });
+uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('dragover'));
+uploadBox.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadBox.classList.remove('dragover');
+  uploadLoraFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => uploadLoraFiles(fileInput.files));
+</script>
+{% endblock %}

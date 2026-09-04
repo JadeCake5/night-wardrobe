@@ -10,7 +10,7 @@
     <div class="runtime-card {{ 'is-ready' if runtime.available else 'is-error' }}">
       <strong>{{ "运行环境可用" if runtime.available else "运行环境不可用" }}</strong>
       {% if runtime.available %}
-      <span>上游 {{ runtime.upstream_version }} · PyAV {{ runtime.av_version }} · cryptography {{ runtime.cryptography_version }}</span>
+      <span>解密核心 {{ runtime.core_version }} · PyAV {{ runtime.av_version }} · cryptography {{ runtime.cryptography_version }}</span>
       <small>{{ runtime.algorithm }}</small>
       {% else %}
       <span>{{ runtime.message }}</span>
@@ -71,6 +71,18 @@
       <article class="video-job status-{{ job.status }}" data-video-job-id="{{ job.id }}" data-video-job-status="{{ job.status }}">
         <div class="video-job-main">
           <span class="video-job-state"><i></i><b data-job-status-label>{{ job.status_label }}</b></span>
+          {% if job.status == 'running' %}
+          {% set vd_percent = (((job.progress or 0) * 100) | round(0) | int) %}
+          <div class="video-job-progress" data-vd-progress="{{ vd_percent }}">
+            <div class="video-job-progress-row">
+              <div class="video-job-progress-track">
+                <div class="video-job-progress-fill" style="width: {{ vd_percent }}%;"></div>
+              </div>
+              <span class="video-job-progress-percent">{{ vd_percent }}%</span>
+            </div>
+            <span class="video-job-progress-message">{{ job.progress_message or '' }}</span>
+          </div>
+          {% endif %}
           <h3>{{ job.source_name }}</h3>
           <p>输出：{{ job.output_name }}</p>
           <small>{{ "%.2f"|format(job.input_size / 1048576) }} MB · 创建于 {{ job.created_at }}</small>
@@ -91,6 +103,17 @@
     <p class="empty-hint">还没有视频解密任务。选择 .evideo 密文后即可开始。</p>
     {% endif %}
   </section>
+  <template id="videoJobProgressTpl">
+    <div class="video-job-progress" data-vd-progress="0">
+      <div class="video-job-progress-row">
+        <div class="video-job-progress-track">
+          <div class="video-job-progress-fill" style="width: 0%;"></div>
+        </div>
+        <span class="video-job-progress-percent">0%</span>
+      </div>
+      <span class="video-job-progress-message"></span>
+    </div>
+  </template>
 </section>
 
 <script>
@@ -170,6 +193,37 @@
     });
   }
 
+  function jobProgressPercent(progress) {
+    const value = Number(progress);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.round(value * 100)));
+  }
+
+  function renderJobProgress(item, job) {
+    let wrap = item.querySelector('[data-vd-progress]');
+    if (job.status !== 'running') {
+      if (wrap) wrap.remove();
+      return;
+    }
+    const percent = jobProgressPercent(job.progress);
+    const message = job.progress_message || '';
+    if (!wrap) {
+      const tpl = document.getElementById('videoJobProgressTpl');
+      wrap = tpl ? tpl.content.firstElementChild.cloneNode(true) : document.createElement('div');
+      if (!tpl) wrap.className = 'video-job-progress';
+      const state = item.querySelector('.video-job-state');
+      if (state) state.insertAdjacentElement('afterend', wrap);
+      else item.querySelector('.video-job-main')?.prepend(wrap);
+    }
+    wrap.setAttribute('data-vd-progress', String(percent));
+    const fill = wrap.querySelector('.video-job-progress-fill');
+    const percentEl = wrap.querySelector('.video-job-progress-percent');
+    const messageEl = wrap.querySelector('.video-job-progress-message');
+    if (fill) fill.style.width = percent + '%';
+    if (percentEl) percentEl.textContent = percent + '%';
+    if (messageEl) messageEl.textContent = message;
+  }
+
   async function pollJobs() {
     const active = [...document.querySelectorAll('[data-video-job-id]')]
       .filter(item => ['uploading', 'queued', 'running'].includes(item.dataset.videoJobStatus));
@@ -182,6 +236,7 @@
         const job = await response.json();
         const label = item.querySelector('[data-job-status-label]');
         if (label) label.textContent = job.status_label;
+        renderJobProgress(item, job);
         if (job.status !== item.dataset.videoJobStatus) {
           if (['succeeded', 'failed', 'interrupted'].includes(job.status)) {
             finished = true;

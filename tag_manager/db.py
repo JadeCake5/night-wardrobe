@@ -177,6 +177,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 status TEXT NOT NULL DEFAULT 'uploading',
                 error_code TEXT DEFAULT '',
                 error_message TEXT DEFAULT '',
+                progress REAL NOT NULL DEFAULT 0,
+                progress_message TEXT NOT NULL DEFAULT '',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 started_at TEXT DEFAULT '',
                 completed_at TEXT DEFAULT '',
@@ -296,6 +298,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
             (DEFAULT_SYSTEM_PROMPT,),
         )
         ensure_gallery_image_columns(conn)
+        ensure_video_decrypt_job_columns(conn)
 
 
 def ensure_gallery_image_columns(conn: sqlite3.Connection) -> None:
@@ -310,6 +313,17 @@ def ensure_gallery_image_columns(conn: sqlite3.Connection) -> None:
     for name, definition in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE gallery_images ADD COLUMN {name} {definition}")
+
+
+def ensure_video_decrypt_job_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(video_decrypt_jobs)").fetchall()}
+    columns = {
+        "progress": "REAL NOT NULL DEFAULT 0",
+        "progress_message": "TEXT NOT NULL DEFAULT ''",
+    }
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE video_decrypt_jobs ADD COLUMN {name} {definition}")
 
 
 def upsert_category(name: str, kind: str = "tag", sort_order: int = 0, notes: str = "") -> None:

@@ -645,6 +645,15 @@ class VideoDecryptAjaxTests(unittest.TestCase):
         self.assertIn("window.__wardrobePageCleanup", tpl)
         self.assertIn("xhr.upload.addEventListener('progress'", tpl)
 
+    def test运行中任务进度条元素契约(self) -> None:
+        tpl = self.tpl
+        self.assertIn("解密核心", tpl)
+        self.assertIn("runtime.core_version", tpl)
+        self.assertIn("data-vd-progress", tpl)
+        self.assertIn("video-job-progress-fill", tpl)
+        self.assertIn("video-job-progress-percent", tpl)
+        self.assertIn("video-job-progress-message", tpl)
+
 
 class MangaToolPageLayoutTests(unittest.TestCase):
     """v1.14.0 漫画工具页紧凑工具化重构契约"""
@@ -718,8 +727,8 @@ class LlmSettingsEmbedTests(unittest.TestCase):
 
     def testOpenAPI版本与v1操作数(self) -> None:
         schema = app_module.app.openapi()
-        self.assertEqual("1.21.0", app_module.app.version)
-        self.assertEqual("1.21.0", schema["info"]["version"])
+        self.assertEqual("1.22.0", app_module.app.version)
+        self.assertEqual("1.22.0", schema["info"]["version"])
         count = sum(len(v) for key, v in schema["paths"].items() if key.startswith("/api/v1"))
         self.assertEqual(20, count)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import re
 import sqlite3
@@ -112,6 +113,7 @@ class VideoDecryptService:
                 UPDATE video_decrypt_jobs
                 SET status='interrupted', error_code='interrupted',
                     error_message='应用重启导致任务中断，请重新提交',
+                    progress=0, progress_message='',
                     completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                 WHERE status IN (?, ?, ?)
                 """,
@@ -203,7 +205,8 @@ class VideoDecryptService:
             cursor = conn.execute(
                 """
                 UPDATE video_decrypt_jobs
-                SET status='running', started_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                SET status='running', progress=0, progress_message='',
+                    started_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND status='queued'
                 """,
                 (job_id,),
@@ -220,7 +223,9 @@ class VideoDecryptService:
         output_path = self._resolve_relative(row["output_path"])
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            result = Path(self.adapter.decrypt(input_path, output_path, password)).resolve()
+            result = Path(
+                self._decrypt_with_progress(input_path, output_path, password, job_id)
+            ).resolve()
             if result != output_path.resolve() or not output_path.is_file():
                 raise VideoDecryptError("output_missing", "解密器未生成预期输出文件")
             with self.connect_factory() as conn:
@@ -228,7 +233,7 @@ class VideoDecryptService:
                     """
                     UPDATE video_decrypt_jobs
                     SET status='succeeded', error_code='', error_message='',
-                        completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                        progress=1, completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                     WHERE id=? AND status='running'
                     """,
                     (job_id,),
@@ -243,12 +248,55 @@ class VideoDecryptService:
             input_path.unlink(missing_ok=True)
             password = ""
 
+    def _decrypt_with_progress(
+        self,
+        input_path: Path,
+        output_path: Path,
+        password: str,
+        job_id: int,
+    ) -> Path:
+        last_percent = -1
+
+        def progress_callback(value: float, message: str) -> None:
+            nonlocal last_percent
+            try:
+                progress = max(0.0, min(1.0, float(value)))
+            except (TypeError, ValueError):
+                return
+            percent = int(progress * 100)
+            if percent == last_percent:
+                return
+            last_percent = percent
+            with self.connect_factory() as conn:
+                conn.execute(
+                    """
+                    UPDATE video_decrypt_jobs
+                    SET progress=?, progress_message=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND status='running'
+                    """,
+                    (progress, str(message or ""), job_id),
+                )
+
+        decrypt = self.adapter.decrypt
+        kwargs: dict[str, Any] = {}
+        try:
+            parameters = inspect.signature(decrypt).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        # 旧测试 FakeAdapter.decrypt 无 progress_callback 形参，按签名决定是否传入。
+        if "progress_callback" in parameters or any(
+            item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values()
+        ):
+            kwargs["progress_callback"] = progress_callback
+        return Path(decrypt(input_path, output_path, password, **kwargs))
+
     def _mark_failed(self, job_id: int, code: str, message: str) -> None:
         with self.connect_factory() as conn:
             conn.execute(
                 """
                 UPDATE video_decrypt_jobs
                 SET status='failed', error_code=?, error_message=?,
+                    progress=0, progress_message='',
                     completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND status != 'succeeded'
                 """,
@@ -266,6 +314,8 @@ class VideoDecryptService:
             "status_label": STATUS_LABELS.get(status, status),
             "error_code": row["error_code"],
             "error_message": row["error_message"],
+            "progress": float(row["progress"] or 0),
+            "progress_message": row["progress_message"] or "",
             "created_at": row["created_at"],
             "started_at": row["started_at"],
             "completed_at": row["completed_at"],

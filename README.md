@@ -2,7 +2,7 @@
 
 面向 Stable Diffusion / NoobAI 工作流的本地 Tag、角色卡、配方、图库与提示词工坊管理器。默认跑在本机，数据留在本机。
 
-当前版本：**v1.21.0**
+当前版本：**v1.22.0**
 
 ## 功能亮点
 
@@ -13,7 +13,7 @@
 - **工坊 Copilot** — 复用本地 LLM 设置，输出结构化诊断与 Diff；必须勾选后显式 Apply 才会写回 Prompt。支持 function-calling 只读查询 Tag 库、配方和角色卡。正式会话写入本机 SQLite，刷新或离开工坊后可恢复；历史 Diff 在当前 Prompt 已变化时进入 stale 态，需重新检查后再应用
 - **图库** — 扫描本地图片、解析 ComfyUI / 生成元数据、按文件夹管理
 
-附加工具（按需使用，不作为核心承诺）：LoRA 库、漫画下载、视频解密、工作流库、AI 抽卡。
+附加工具（按需使用，不作为核心承诺）：LoRA 库、漫画下载、视频解密（解密核心已内置，兼容加密插件 2.0 的 `.evideo`，无需外部解密仓库或本地配置文件）、工作流库、AI 抽卡。
 
 ## 界面预览
 
@@ -95,7 +95,7 @@ Windows 也可双击根目录 `start.bat`：首次运行会创建虚拟环境并
 - 本地 SQLite 数据库及其 WAL/SHM
 - 私有 Tag 库 JSON 导出
 - `tag_manager/gallery/`、`tag_manager/workflows/` 中的个人文件
-- LoRA 预览、漫画下载产物、视频解密配置
+- LoRA 预览、漫画下载产物、视频解密产物
 - `.env` 与任何密钥文件
 
 `.gitignore` 已排除上述路径。克隆后首次启动会自动初始化空库。
@@ -124,14 +124,12 @@ npm run build
 
 ## 版本
 
-**v1.21.0** 最近亮点：
+**v1.22.0** 最近亮点：
 
-- Workshop Copilot 正式 Session 持久化到本机 SQLite，支持新建 / 切换 / 重命名 / 删除 / 搜索
-- 刷新或离开工坊后可恢复 Diagnosis / Diff / Apply 状态；Pending 请求按 session_id 隔离
-- 发给 LLM 的历史会裁剪适配，当前工作区优先于旧快照
-- Session History 改为 IDE 式扁平触发条；搜索放进切换 Popover，重命名 / 删除收敛到会话历史菜单
-- 历史 Diff 在当前 Prompt 已变化时进入 stale 态，禁止直接 Apply
-- 含 v1.20.1：LLM 设置内嵌工坊齿轮；Copilot 真实 LLM + function-calling 只读工具；Apply 仍须用户显式确认
+- 视频解密核心内置（AES-256-GCM / Scrypt，兼容加密插件 2.0 生成的 `.evideo`），开箱即用，不再需要配置外部仓库
+- 解密任务卡片实时显示进度百分比，页面直接展示解密核心版本
+- 一键脚本 `start.bat` 智能化：自动选择本机 ≥3.11 的最佳 Python，依赖不变时跳过重装，找不到合格解释器时给出 winget / 官网安装指引
+- 含 v1.21.0：Workshop Copilot Session 持久化到本机 SQLite，刷新可恢复 Diagnosis / Diff / Apply 状态；Session History 改为 IDE 式扁平触发条
 
 ## 致谢 / Credits
 

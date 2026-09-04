@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+frontend/copilot/node_modules/
+
+# 本地运行数据
+*.log
+*.stackdump
+*.sqlite3
+*.sqlite3-*
+
+# 本地素材与用户数据
+gallery/
+workflows/
+video_decrypt/
+manga/
+manga_downloads/
+/docs/
+.folder-trash/
+
+# 本地配置与敏感信息
+.env
+.env.*
+config.ini
+manga_config.json
+*.key
+*.pem
+*.p12
+*.pfx
+credentials*.json
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

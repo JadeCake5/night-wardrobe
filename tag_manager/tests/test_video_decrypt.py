@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import shutil
 import tempfile
 import threading
 import time
@@ -10,7 +11,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import numpy as np
 from fastapi.testclient import TestClient
 from starlette.datastructures import UploadFile
 
@@ -21,9 +21,7 @@ from tag_manager.video_decrypt_adapter import (
     VideoDecryptAdapter,
     VideoDecryptError,
     VideoDecryptRuntimeInfo,
-    load_upstream_module,
     map_upstream_error,
-    resolve_upstream_root,
 )
 from tag_manager.video_decrypt_service import (
     UPLOAD_CHUNK_SIZE,
@@ -33,14 +31,15 @@ from tag_manager.video_decrypt_service import (
     safe_source_name,
 )
 
-UPSTREAM_ROOT = Path(r"D:\User\Github\comfyui-encrypt-video")
+FIXTURE_EVIDEO = Path(__file__).resolve().parent / "fixtures" / "sample.evideo"
+FIXTURE_PASSWORD = "正确密码"
 
 
 class FakeAdapter:
     def inspect_runtime(self) -> VideoDecryptRuntimeInfo:
         return VideoDecryptRuntimeInfo(
             True,
-            upstream_version="测试版",
+            core_version="测试版",
             av_version="测试版",
             cryptography_version="测试版",
             algorithm="测试协议",
@@ -77,24 +76,52 @@ def wait_for_status(service: VideoDecryptService, job_id: int, expected: set[str
     raise AssertionError(f"任务 {job_id} 未在限定时间进入状态：{sorted(expected)}")
 
 
+def _assert_mapped_error(test: unittest.TestCase, error: VideoDecryptError, code: str, keyword: str) -> None:
+    test.assertEqual(code, error.code)
+    combined = f"{error.message}\n{error.__cause__ or ''}"
+    test.assertIn(keyword, combined, f"错误文案缺少 map_upstream_error 关键词 {keyword!r}：{combined}")
+
+
 class VideoDecryptAdapterTests(unittest.TestCase):
-    def test运行时解析上游版本与密码学环境(self) -> None:
-        adapter = VideoDecryptAdapter(UPSTREAM_ROOT)
+    def test内置核心运行环境自检(self) -> None:
+        adapter = VideoDecryptAdapter()
         runtime = adapter.inspect_runtime()
 
         self.assertTrue(runtime.available, runtime.message)
-        self.assertEqual("2.0.3", runtime.upstream_version)
+        self.assertEqual("2.0.3", runtime.core_version)
         self.assertEqual("AES-256-GCM / Scrypt", runtime.algorithm)
         self.assertEqual(".evideo", runtime.file_extension)
         self.assertTrue(runtime.av_version)
         self.assertTrue(runtime.cryptography_version)
 
-    def test配置文件可定位上游且业务代码不依赖绝对路径(self) -> None:
+    def test真实异常与错误码映射一致(self) -> None:
+        self.assertTrue(FIXTURE_EVIDEO.is_file(), "缺少测试固件 sample.evideo")
+        adapter = VideoDecryptAdapter()
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config.json"
-            config_path.write_text(json.dumps({"upstream_root": str(UPSTREAM_ROOT)}), encoding="utf-8")
-            resolved = resolve_upstream_root(config_path=config_path)
-        self.assertEqual(UPSTREAM_ROOT.resolve(), resolved)
+            root = Path(temp_dir)
+            encrypted = root / "encrypted.evideo"
+            shutil.copy(FIXTURE_EVIDEO, encrypted)
+
+            with self.assertRaises(VideoDecryptError) as wrong_error:
+                adapter.decrypt(encrypted, root / "wrong.mp4", "错误密码")
+            _assert_mapped_error(self, wrong_error.exception, "authentication_failed", "密码错误")
+
+            tampered = root / "tampered.evideo"
+            damaged = bytearray(encrypted.read_bytes())
+            damaged[len(damaged) // 2] ^= 0x01
+            tampered.write_bytes(damaged)
+            with self.assertRaises(VideoDecryptError) as tampered_error:
+                adapter.decrypt(tampered, root / "tampered.mp4", FIXTURE_PASSWORD)
+            _assert_mapped_error(self, tampered_error.exception, "authentication_failed", "密码错误")
+            self.assertFalse((root / "tampered.mp4").exists())
+            self.assertFalse((root / "tampered.mp4.partial").exists())
+            self.assertFalse((root / "tampered.mp4.fragmented.partial").exists())
+
+            fake = root / "plain.evideo"
+            fake.write_bytes(b"not-an-evideo-file" * 4)
+            with self.assertRaises(VideoDecryptError) as protocol_error:
+                adapter.decrypt(fake, root / "plain.mp4", FIXTURE_PASSWORD)
+            _assert_mapped_error(self, protocol_error.exception, "unsupported_protocol", "不是本插件")
 
     def test上游错误转换为稳定错误代码(self) -> None:
         cases = [
@@ -370,21 +397,15 @@ class RealVideoDecryptIntegrationTests(unittest.TestCase):
     def test真实EVIDEO恢复MP4且认证失败无残留(self) -> None:
         import av
 
+        self.assertTrue(FIXTURE_EVIDEO.is_file(), "缺少测试固件 sample.evideo")
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
             db.init_db(db_path)
-            adapter = VideoDecryptAdapter(UPSTREAM_ROOT)
-            upstream = load_upstream_module(UPSTREAM_ROOT)
-            frames = np.random.default_rng(7).random((3, 12, 18, 3), dtype=np.float32)
+            adapter = VideoDecryptAdapter()
             encrypted = root / "encrypted.evideo"
-            sample_rate = 8000
-            samples = np.arange(sample_rate, dtype=np.float32)
-            audio = {
-                "waveform": np.sin(2 * np.pi * 220 * samples / sample_rate)[np.newaxis, np.newaxis, :],
-                "sample_rate": sample_rate,
-            }
-            upstream.encode_encrypted_video(frames, encrypted, 24.0, "正确密码", audio=audio)
+            shutil.copy(FIXTURE_EVIDEO, encrypted)
+            payload = encrypted.read_bytes()
             service = VideoDecryptService(
                 storage_root=root / "storage",
                 connect_factory=lambda: db.connect(db_path),
@@ -393,12 +414,14 @@ class RealVideoDecryptIntegrationTests(unittest.TestCase):
             try:
                 correct = asyncio.run(
                     service.create_job(
-                        UploadFile(file=encrypted.open("rb"), filename="encrypted.evideo"),
-                        "正确密码",
+                        UploadFile(file=io.BytesIO(payload), filename="encrypted.evideo"),
+                        FIXTURE_PASSWORD,
                         "restored.mp4",
                     )
                 )
                 correct_job = wait_for_status(service, correct["id"], {"succeeded"}, timeout=10)
+                self.assertEqual(1, correct_job["progress"])
+                self.assertTrue(str(correct_job["progress_message"]).strip())
                 output_path, _ = service.get_download(correct_job["id"])
                 with av.open(str(output_path)) as container:
                     video = container.streams.video[0]
@@ -418,12 +441,13 @@ class RealVideoDecryptIntegrationTests(unittest.TestCase):
 
                 wrong = asyncio.run(
                     service.create_job(
-                        UploadFile(file=encrypted.open("rb"), filename="encrypted.evideo"),
+                        UploadFile(file=io.BytesIO(payload), filename="encrypted.evideo"),
                         "错误密码",
                         "wrong.mp4",
                     )
                 )
                 wrong_job = wait_for_status(service, wrong["id"], {"failed"}, timeout=10)
+                self.assertEqual("failed", wrong_job["status"])
                 self.assertEqual("authentication_failed", wrong_job["error_code"])
                 with db.connect(db_path) as conn:
                     row = conn.execute("SELECT input_path, output_path FROM video_decrypt_jobs WHERE id=?", (wrong["id"],)).fetchone()
@@ -432,23 +456,6 @@ class RealVideoDecryptIntegrationTests(unittest.TestCase):
                 self.assertFalse(wrong_output.exists())
                 self.assertFalse(wrong_output.with_name(f"{wrong_output.name}.partial").exists())
                 self.assertFalse(wrong_output.with_name(f"{wrong_output.name}.fragmented.partial").exists())
-
-                tampered = root / "tampered.evideo"
-                damaged = bytearray(encrypted.read_bytes())
-                damaged[len(damaged) // 2] ^= 0x01
-                tampered.write_bytes(damaged)
-                with self.assertRaises(VideoDecryptError) as tampered_error:
-                    adapter.decrypt(tampered, root / "tampered.mp4", "正确密码")
-                self.assertEqual("authentication_failed", tampered_error.exception.code)
-                self.assertFalse((root / "tampered.mp4").exists())
-                self.assertFalse((root / "tampered.mp4.partial").exists())
-                self.assertFalse((root / "tampered.mp4.fragmented.partial").exists())
-
-                plain = root / "plain.evideo"
-                plain.write_bytes(b"not-an-evideo-file" * 4)
-                with self.assertRaises(VideoDecryptError) as protocol_error:
-                    adapter.decrypt(plain, root / "plain.mp4", "正确密码")
-                self.assertEqual("unsupported_protocol", protocol_error.exception.code)
             finally:
                 service.shutdown()
 
@@ -462,8 +469,8 @@ class VideoDecryptStaticIntegrationTests(unittest.TestCase):
         style = (base_dir / "static" / "style.css").read_text(encoding="utf-8")
 
         self.assertIn('href="/video-decrypt"', base_html)
-        self.assertIn("v1.21.0", base_html)
-        self.assertIn("style.css?v=79", base_html)
+        self.assertIn("v1.22.0", base_html)
+        self.assertIn("style.css?v=80", base_html)
         self.assertIn("window.__wardrobePageCleanup", base_html)
         self.assertIn('name="password" type="password" autocomplete="off"', template)
         self.assertNotIn('id="videoPassword"', template)
@@ -478,6 +485,14 @@ class VideoDecryptStaticIntegrationTests(unittest.TestCase):
         self.assertIn(".evideo,video/x-comfy-encrypted,application/octet-stream", template)
         self.assertIn("AES-256-GCM", template)
         self.assertIn("PyAV", template)
+        self.assertIn("解密核心", template)
+        self.assertIn("runtime.core_version", template)
+        self.assertIn("data-vd-progress", template)
+        self.assertIn("video-job-progress-fill", template)
+        self.assertIn("video-job-progress-percent", template)
+        self.assertIn("video-job-progress-message", template)
+        self.assertIn(".video-job-progress", style)
+        self.assertIn(".video-job-progress-fill", style)
         self.assertIn("Windows 播放器可识别总时长和拖动进度", template)
 
 

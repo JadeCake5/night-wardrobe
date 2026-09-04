@@ -469,6 +469,13 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .video-job p, .video-job small { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .video-job-state { display: inline-flex; align-items: center; gap: 7px; color: #cbd5e1; font-size: 12px; }
 .video-job-state i { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
+.video-job-progress { display: grid; gap: 5px; margin: 8px 0 2px; max-width: 360px; }
+.video-job-progress-row { display: flex; align-items: center; gap: 8px; }
+.video-job-progress-track { flex: 1; min-width: 0; height: 6px; overflow: hidden; border-radius: 999px; background: rgba(30, 41, 59, .9); }
+.video-job-progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan), var(--accent)); transition: width .2s ease; }
+.video-job-progress-percent { flex: 0 0 auto; color: #bae6fd; font-size: 12px; font-variant-numeric: tabular-nums; }
+.video-job-progress-message { color: var(--muted); font-size: 12px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-job-progress-message:empty { display: none; }
 .status-uploading .video-job-state i, .status-queued .video-job-state i, .status-running .video-job-state i { background: #38bdf8; box-shadow: 0 0 12px #38bdf8; animation: video-job-pulse 1.2s infinite; }
 .status-succeeded .video-job-state i { background: #4ade80; }
 .status-failed .video-job-state i, .status-interrupted .video-job-state i { background: #f87171; }

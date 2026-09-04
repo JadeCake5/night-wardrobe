@@ -15,7 +15,6 @@ tag_manager/video_decrypt/
 tag_manager/.folder-trash/
 tag_manager/manga/
 tag_manager/manga_downloads/
-video_decrypt_config.json
 manga_config.json
 .env
 .env.*

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -245,7 +246,7 @@ class WorkshopWorkbenchLayoutTests(unittest.TestCase):
         self.assertIn("__wardrobePageCleanup", tpl)
         self.assertIn("WorkshopCopilot.destroy", tpl)
         self.assertIn('<script src="/static/workshop-copilot.js?v=76"></script>', tpl)
-        self.assertIn("/static/copilot/copilot.js?v=80", tpl)
+        self.assertIn("/static/copilot/copilot.js?v=84", tpl)
 
 
 class WorkshopDirtyTrackContractTests(unittest.TestCase):
@@ -717,8 +718,8 @@ class LlmSettingsEmbedTests(unittest.TestCase):
 
     def testOpenAPI版本与v1操作数(self) -> None:
         schema = app_module.app.openapi()
-        self.assertEqual("1.20.1", app_module.app.version)
-        self.assertEqual("1.20.1", schema["info"]["version"])
+        self.assertEqual("1.21.0", app_module.app.version)
+        self.assertEqual("1.21.0", schema["info"]["version"])
         count = sum(len(v) for key, v in schema["paths"].items() if key.startswith("/api/v1"))
         self.assertEqual(20, count)
 
@@ -782,6 +783,16 @@ class LlmSettingsEmbedTests(unittest.TestCase):
         self.assertNotIn("对话 / 辅助分类", response.text)
         self.assertNotIn('action="/llm/chat"', response.text)
         self.assertIn('action="/llm/settings"', response.text)
+
+    def test页面渲染不再触发TemplateResponse弃用警告(self) -> None:
+        pages = ("/", "/tags", "/gallery", "/workflows", "/llm", "/characters", "/recipes", "/workshop")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            for path in pages:
+                response = self.client.get(path)
+                self.assertEqual(200, response.status_code, path)
+        texts = [str(item.message) for item in caught]
+        self.assertFalse(any("TemplateResponse" in text for text in texts), texts)
 
 
 class SafeLocalNextTests(unittest.TestCase):

@@ -222,8 +222,8 @@
   </div>
 </dialog>
 
-<link rel="stylesheet" href="/static/copilot/copilot.css?v=80">
-<script src="/static/copilot/copilot.js?v=80"></script>
+<link rel="stylesheet" href="/static/copilot/copilot.css?v=84">
+<script src="/static/copilot/copilot.js?v=84"></script>
 <script src="/static/workshop-copilot.js?v=76"></script>
 <script>
 var charsData = {{ characters|tojson }};
@@ -703,6 +703,28 @@ window.WorkshopAPI = {
       positive: promptText('positive'),
       negative: promptText('negative'),
       recipe: recipe,
+    };
+  },
+  getContextSnapshot() {
+    function labelOf(id) {
+      const el = document.getElementById('ws-' + id);
+      if (!el || !el.value) return '';
+      const opt = el.options[el.selectedIndex];
+      return opt ? String(opt.textContent || '').trim() : '';
+    }
+    function preview(text, n) {
+      const t = String(text || '').replace(/\s+/g, ' ').trim();
+      return t.length <= n ? t : t.slice(0, n);
+    }
+    const payload = window.WorkshopAPI.getPromptPayload();
+    return {
+      character: labelOf('char'),
+      outfit: labelOf('outfit'),
+      artist: labelOf('artist'),
+      scene: labelOf('scene'),
+      negative_template: labelOf('negative'),
+      positive_preview: preview(payload.positive, 160),
+      negative_preview: preview(payload.negative, 120),
     };
   },
   // AI Apply 成功后该块落入手改轨，与手工编辑同一套 dirty 规则

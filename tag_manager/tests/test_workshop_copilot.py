@@ -38,8 +38,8 @@ class WorkshopCopilotContractTests(unittest.TestCase):
 
     def testIsland挂载点与产物(self) -> None:
         self.assertIn('id="workshop-copilot-root"', self.tpl)
-        self.assertIn("/static/copilot/copilot.js?v=80", self.tpl)
-        self.assertIn("/static/copilot/copilot.css?v=80", self.tpl)
+        self.assertIn("/static/copilot/copilot.js?v=84", self.tpl)
+        self.assertIn("/static/copilot/copilot.css?v=84", self.tpl)
         self.assertIn("e.mount=", self.island_js)
         self.assertIn("e.unmount=", self.island_js)
         self.assertIn("var WorkshopCopilotIsland=", self.island_js)
@@ -202,10 +202,13 @@ class WorkshopCopilotConversationTests(unittest.TestCase):
         self.assertIn("turn.applied || turn.discarded", self.app)
         self.assertIn("已应用的修改", Path(app_module.BASE_DIR, "frontend", "copilot", "src", "components", "workshop", "DiffCard.tsx").read_text(encoding="utf-8"))
 
-    def test异步守卫与会话不持久化(self) -> None:
-        self.assertIn("token !== sessionRef.current", self.app)
+    def test异步守卫与会话持久化到服务端(self) -> None:
+        self.assertIn("activeSessionIdRef.current !== requestSessionId", self.app)
+        self.assertIn("session_id: requestSessionId", self.app)
         self.assertIn("unmountIsland()", self.js)
         self.assertNotIn("sessionStorage", self.js)
+        self.assertNotIn("localStorage", self.app)
+        self.assertNotIn("indexedDB", self.app)
         close_section = self.js.split("function closeDrawer()", 1)[1].split("function onResizePointerDown", 1)[0]
         self.assertNotIn("unmountIsland();", close_section)
 
@@ -381,6 +384,115 @@ class RealBackendWiringTests(unittest.TestCase):
         self.assertIn('{ id: pending.id, role: "error", text: message }', self.app)
 
 
+class WorkshopCopilotSessionUiTests(unittest.TestCase):
+    """v1.21.0：Session 控件、恢复契约与 pending 隔离。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        base_dir = Path(app_module.BASE_DIR)
+        src = base_dir / "frontend" / "copilot" / "src"
+        cls.app = (src / "App.tsx").read_text(encoding="utf-8")
+        cls.real = (src / "realBackend.ts").read_text(encoding="utf-8")
+        cls.types = (src / "types.ts").read_text(encoding="utf-8")
+        cls.bridge = (src / "bridge.ts").read_text(encoding="utf-8")
+        cls.bar = (src / "components" / "workshop" / "SessionBar.tsx").read_text(encoding="utf-8")
+        cls.switcher = (src / "components" / "workshop" / "SessionSwitcher.tsx").read_text(encoding="utf-8")
+        cls.notice = (src / "components" / "workshop" / "OldContextNotice.tsx").read_text(encoding="utf-8")
+        cls.tpl = (base_dir / "templates" / "workshop.html").read_text(encoding="utf-8")
+        cls.js = (base_dir / "static" / "workshop-copilot.js").read_text(encoding="utf-8")
+        cls.api = (src / "sessionApi.ts").read_text(encoding="utf-8")
+
+    def test会话控件与历史视图(self) -> None:
+        self.assertIn("data-copilot-session-current", self.bar)
+        self.assertIn("data-copilot-session-new", self.bar)
+        self.assertIn("查看全部历史", self.switcher)
+        self.assertIn("重命名", self.switcher)
+        self.assertIn("确认删除？", self.switcher)
+        self.assertIn("historyMode", self.app)
+        self.assertIn("sessionSearch", self.app)
+        self.assertIn("activeSessionId", self.app)
+
+    def test会话管理入口收敛到历史视图(self) -> None:
+        # 搜索框只存在于 Popover 与 History View，不常驻 Conversation 顶部
+        self.assertIn('data-copilot-session-search=""', self.switcher)
+        self.assertNotIn("data-copilot-session-search", self.app.split("return (", 1)[1].split("{historyMode ? (", 1)[0])
+        # Popover 只做导航与切换，管理操作（重命名/删除/⋯）只在 History View
+        popover = self.switcher.split("export function SessionHistoryView", 1)[0]
+        history = self.switcher.split("export function SessionHistoryView", 1)[1]
+        self.assertNotIn("data-copilot-session-rename-start", popover)
+        self.assertNotIn("data-copilot-session-delete", popover.replace("data-copilot-session-delete-confirm", ""))
+        self.assertIn("data-copilot-session-menu", history)
+        self.assertIn("data-copilot-session-rename-start", history)
+        self.assertIn("data-copilot-session-delete", history)
+        # Popover 页脚“查看全部历史”是导航动作
+        self.assertIn("data-copilot-history-all", popover)
+
+    def test历史Diff过期禁止直接Apply(self) -> None:
+        diff = (Path(app_module.BASE_DIR) / "frontend" / "copilot" / "src" / "components" / "workshop" / "DiffCard.tsx").read_text(encoding="utf-8")
+        self.assertIn('"stale"', diff)
+        self.assertIn("此建议基于较早的 Prompt", diff)
+        self.assertIn("使用当前 Prompt 重新检查", diff)
+        self.assertIn("data-copilot-recheck", diff)
+        self.assertIn("data-copilot-diff-stale", diff)
+        # 已应用/已放弃有明确 readonly 标识
+        self.assertIn("已应用", diff)
+        self.assertIn("已放弃", diff)
+        self.assertIn("copilot-diff-badge", diff)
+        # App 层兜底：快照偏离时 applyTurn 直接拒绝写回
+        self.assertIn("此建议基于较早的 Prompt，请先使用当前 Prompt 重新检查", self.app)
+        self.assertIn("stale={showOldContext}", self.app)
+        self.assertIn("onRecheck", self.app)
+
+    def test旧上下文提示不自动回滚(self) -> None:
+        self.assertIn("此会话基于较早的 Prompt 上下文", self.notice)
+        self.assertIn("查看旧上下文", self.notice)
+        self.assertNotIn("恢复会话时的 Prompt", self.app)
+        self.assertNotIn("恢复会话时的 Prompt", self.notice)
+        self.assertIn("getContextSnapshot", self.tpl)
+        self.assertIn("getContextSnapshot", self.bridge)
+        self.assertIn("data-copilot-diff-state", (Path(app_module.BASE_DIR) / "frontend" / "copilot" / "src" / "components" / "workshop" / "DiffCard.tsx").read_text(encoding="utf-8"))
+
+    def test请求携带session_id且不回传UI历史(self) -> None:
+        self.assertIn("session_id", self.real)
+        self.assertIn("if (request.session_id)", self.real)
+        self.assertIn("body.session_id = request.session_id", self.real)
+
+    def test收起不卸载与离开才恢复(self) -> None:
+        close_section = self.js.split("function closeDrawer()", 1)[1].split("function onResizePointerDown", 1)[0]
+        self.assertNotIn("unmountIsland", close_section)
+        destroy_section = self.js.split("function destroy()", 1)[1].split("function toggleDrawer()", 1)[0]
+        self.assertIn("unmountIsland();", destroy_section)
+
+    def testpending跨会话隔离(self) -> None:
+        self.assertIn("pendingSessionsRef", self.app)
+        self.assertIn("requestSessionId", self.app)
+        self.assertIn("owned !== requestSessionId", self.app)
+        self.assertIn("hydrateRequestSession", self.app)
+        self.assertIn("loadSession(requestSessionId)", self.app)
+        self.assertIn('"pending-" + requestSessionId', self.app)
+        self.assertIn("patchMessage", self.app)
+        self.assertIn("data-session-id", self.app)
+
+    def test搜索请求携带q参数(self) -> None:
+        self.assertIn("/api/workshop/copilot/sessions?q=", self.api)
+        self.assertIn("encodeURIComponent(q)", self.api)
+        self.assertIn("listSessions(q)", self.app)
+        self.assertIn("sessionSearch.trim()", self.app)
+        self.assertIn("window.setTimeout", self.app)
+        island = (Path(app_module.BASE_DIR) / "static" / "copilot" / "copilot.js").read_text(encoding="utf-8")
+        self.assertIn("sessions?q=", island)
+
+    def test产物与源码不以浏览器存储作为会话源(self) -> None:
+        island = (Path(app_module.BASE_DIR) / "static" / "copilot" / "copilot.js").read_text(encoding="utf-8")
+        src_dir = Path(app_module.BASE_DIR) / "frontend" / "copilot" / "src"
+        sources = "\n".join(path.read_text(encoding="utf-8") for path in src_dir.rglob("*.ts*"))
+        for blob in (island, sources, self.app):
+            self.assertNotIn("localStorage", blob)
+            self.assertNotIn("sessionStorage", blob)
+            self.assertNotIn("indexedDB", blob)
+            self.assertNotIn("IndexedDB", blob)
+
+
 class WorkshopLlmSettingsContractTests(unittest.TestCase):
     """v1.20.1：LLM 设置内嵌工坊，侧栏不再暴露独立 AI 设置页。"""
 
@@ -395,7 +507,7 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
     def test侧栏不再包含AI设置入口(self) -> None:
         self.assertNotIn('href="/llm"', self.base)
         self.assertNotIn("AI 设置", self.base)
-        self.assertIn("v1.20.1", self.base)
+        self.assertIn("v1.21.0", self.base)
         self.assertIn("style.css?v=79", self.base)
 
     def test工坊header有设置按钮与dialog(self) -> None:
@@ -422,7 +534,7 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
     def test弹层复用folder_dialog样式(self) -> None:
         self.assertIn("#wsLlmSettingsDialog textarea", self.style)
         self.assertIn(".folder-dialog textarea", self.style)
-        self.assertIn("/static/copilot/copilot.js?v=80", self.tpl)
+        self.assertIn("/static/copilot/copilot.js?v=84", self.tpl)
         self.assertIn("/static/workshop-copilot.js?v=76", self.tpl)
 
 

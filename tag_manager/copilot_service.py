@@ -41,6 +41,17 @@ ACTION_PRESETS: dict[str, str] = {
     "optimize_negative": "补全常用质量负面词",
 }
 
+ACTION_LABELS: dict[str, str] = {
+    "diagnose": "诊断 Prompt",
+    "reduce_conflicts": "减少冲突",
+    "dedupe": "清理重复",
+    "improve_pose": "优化动作",
+    "improve_composition": "优化构图",
+    "enrich_environment": "补充环境细节",
+    "optimize_negative": "优化 Negative",
+    "freeform": "自定义指令",
+}
+
 RECIPE_LABELS = {
     "charId": "角色ID",
     "outfitId": "服装ID",
@@ -189,13 +200,14 @@ def generate_suggestion(
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_content})
+    tool_summaries: list[dict] = []
 
     if tools_enabled:
         if llm_tool_call is None:
             from .llm import chat_completion_with_tools as llm_tool_call
         executor = _resolve_executor(tool_registry)
         try:
-            _tool_loop(
+            tool_summaries = _tool_loop(
                 messages,
                 llm_tool_call=llm_tool_call,
                 executor=executor,
@@ -209,21 +221,30 @@ def generate_suggestion(
         except Exception as exc:
             if _is_tools_unsupported(exc):
                 messages[:] = _fallback_messages(history, user_content)
+                tool_summaries = []
             else:
                 raise CopilotError(_redact_secret(str(exc), api_key)) from exc
 
     content = _invoke_llm(llm_call, base_url, api_key, model, messages)
     try:
         payload = _parse_and_validate(content)
-        return _finalize(payload, action)
+        return _finalize(payload, action, tool_summaries)
     except (ValueError, TypeError, json.JSONDecodeError):
         retry_messages = list(messages) + [{"role": "user", "content": RETRY_USER_MESSAGE}]
         content = _invoke_llm(llm_call, base_url, api_key, model, retry_messages)
         try:
             payload = _parse_and_validate(content)
-            return _finalize(payload, action)
+            return _finalize(payload, action, tool_summaries)
         except (ValueError, TypeError, json.JSONDecodeError):
             raise CopilotError(MSG_PARSE_FAILED) from None
+
+
+def user_visible_text(action: str, instruction: str = "") -> str:
+    """落库与 UI 展示用的用户可见文本，不包含完整 Workshop Prompt。"""
+    if action == "freeform":
+        text = (instruction or "").strip()
+        return text or ACTION_LABELS["freeform"]
+    return ACTION_LABELS.get(action, action or ACTION_LABELS["freeform"])
 
 
 def _validate_request(request: dict) -> tuple[str, dict, list[str], str, list[dict]]:
@@ -415,13 +436,16 @@ def _normalize_tool_message(raw) -> dict:
     return raw
 
 
-def _run_one_tool(call, executor) -> dict:
+def _run_one_tool(call, executor) -> tuple[dict, dict]:
+    from .copilot_history import summarize_tool
+
     call = call if isinstance(call, dict) else {}
     call_id = call.get("id") or ""
     fn = call.get("function") if isinstance(call.get("function"), dict) else {}
     name = str(fn.get("name") or "")
     raw_args = fn.get("arguments")
     keys: list[str] = []
+    arguments: dict = {}
     try:
         if raw_args is None or raw_args == "":
             arguments = {}
@@ -439,7 +463,8 @@ def _run_one_tool(call, executor) -> dict:
             {"error": f"工具 {name} 参数不是合法 JSON，键: {', '.join(keys) or '(无法解析)'}"},
             ensure_ascii=False,
         )
-        return {"role": "tool", "tool_call_id": call_id, "content": content}
+        summary = summarize_tool(name, {}, content)
+        return {"role": "tool", "tool_call_id": call_id, "content": content}, summary
     try:
         result = executor(name, arguments)
     except Exception:
@@ -449,7 +474,8 @@ def _run_one_tool(call, executor) -> dict:
         )
     if not isinstance(result, str):
         result = json.dumps(result, ensure_ascii=False)
-    return {"role": "tool", "tool_call_id": call_id, "content": result}
+    summary = summarize_tool(name, arguments, result)
+    return {"role": "tool", "tool_call_id": call_id, "content": result}, summary
 
 
 def _tool_loop(
@@ -461,9 +487,10 @@ def _tool_loop(
     api_key: str,
     model: str,
     max_tool_rounds: int,
-) -> None:
+) -> list[dict]:
     from .copilot_tools import TOOL_SCHEMAS
 
+    summaries: list[dict] = []
     for _round in range(max(0, max_tool_rounds)):
         raw = llm_tool_call(
             base_url,
@@ -477,7 +504,7 @@ def _tool_loop(
         message = _normalize_tool_message(raw)
         tool_calls = message.get("tool_calls") or []
         if not tool_calls:
-            return
+            return summaries
         assistant_content = message.get("content")
         messages.append(
             {
@@ -487,8 +514,11 @@ def _tool_loop(
             }
         )
         for call in tool_calls:
-            messages.append(_run_one_tool(call, executor))
+            tool_message, summary = _run_one_tool(call, executor)
+            messages.append(tool_message)
+            summaries.append(summary)
     messages.append({"role": "user", "content": QUOTA_USER_MESSAGE})
+    return summaries
 
 
 def _invoke_llm(llm_call, base_url: str, api_key: str, model: str, messages: list) -> str:
@@ -584,7 +614,7 @@ def _parse_and_validate(content: str) -> dict:
     return Suggestion.model_validate(data).model_dump(exclude_none=True, by_alias=True)
 
 
-def _finalize(payload: dict, action: str) -> dict:
+def _finalize(payload: dict, action: str, tool_summaries: list[dict] | None = None) -> dict:
     payload["id"] = "llm-" + secrets.token_hex(4)
     payload["action"] = action
     payload.setdefault("diagnostics", [])
@@ -593,4 +623,6 @@ def _finalize(payload: dict, action: str) -> dict:
     for index, diagnostic in enumerate(payload["diagnostics"]):
         if not diagnostic.get("id"):
             diagnostic["id"] = f"d-{index + 1}"
+    if tool_summaries:
+        payload["tools"] = list(tool_summaries)
     return payload

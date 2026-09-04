@@ -1,11 +1,12 @@
+import { CopilotRequestError } from "./types";
 import type { PromptRequest, PromptSuggestion } from "./types";
 
 /** 前端请求超时（毫秒），覆盖服务端一轮生成窗口 */
 const REQUEST_TIMEOUT_MS = 90_000;
 
-/** 把 Island 侧 PromptRequest 映射为本地端点 JSON body */
+/** 把 Island 侧 PromptRequest 映射为本地端点 JSON body。有 session_id 时不回传 UI history。 */
 function toRequestBody(request: PromptRequest) {
-  return {
+  const body: Record<string, unknown> = {
     action: request.action,
     instruction: request.customInstruction ?? "",
     context: {
@@ -14,8 +15,13 @@ function toRequestBody(request: PromptRequest) {
       recipe: request.recipe,
       enabled_contexts: request.contexts ?? [],
     },
-    history: request.history ?? [],
   };
+  if (request.session_id) {
+    body.session_id = request.session_id;
+  } else {
+    body.history = request.history ?? [];
+  }
+  return body;
 }
 
 function httpFail(status: number): Error {
@@ -27,6 +33,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return value as Record<string, unknown>;
   }
   return null;
+}
+
+function attachSession(error: CopilotRequestError, data: Record<string, unknown>, status: number) {
+  error.session_id = typeof data.session_id === "string" ? data.session_id : undefined;
+  error.user_message_id = typeof data.user_message_id === "string" ? data.user_message_id : undefined;
+  error.assistant_message_id =
+    typeof data.assistant_message_id === "string" ? data.assistant_message_id : undefined;
+  error.status = status;
+  return error;
 }
 
 export const RealCopilotBackend = {
@@ -53,7 +68,11 @@ export const RealCopilotBackend = {
       }
       if (!res.ok || data.error) {
         const text = typeof data.error === "string" && data.error ? data.error : "";
-        throw new Error(text || "请求失败（HTTP " + res.status + "）");
+        throw attachSession(
+          new CopilotRequestError(text || "请求失败（HTTP " + res.status + "）"),
+          data,
+          res.status,
+        );
       }
       return {
         id: data.id as PromptSuggestion["id"],
@@ -64,6 +83,11 @@ export const RealCopilotBackend = {
           ? (data.diagnostics as NonNullable<PromptSuggestion["diagnostics"]>)
           : [],
         stages: Array.isArray(data.stages) ? (data.stages as NonNullable<PromptSuggestion["stages"]>) : [],
+        tools: Array.isArray(data.tools) ? (data.tools as NonNullable<PromptSuggestion["tools"]>) : [],
+        session_id: typeof data.session_id === "string" ? data.session_id : request.session_id,
+        user_message_id: typeof data.user_message_id === "string" ? data.user_message_id : undefined,
+        assistant_message_id:
+          typeof data.assistant_message_id === "string" ? data.assistant_message_id : undefined,
       };
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {

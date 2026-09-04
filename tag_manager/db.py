@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,7 +10,8 @@ from .default_prompts import DEFAULT_NEGATIVE_TEMPLATE, DEFAULT_POSITIVE_TEMPLAT
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
-DB_PATH = BASE_DIR / "tag_wardrobe.sqlite3"
+_DB_ENV = os.environ.get("WARDROBE_DB", "").strip()
+DB_PATH = Path(_DB_ENV) if _DB_ENV else (BASE_DIR / "tag_wardrobe.sqlite3")
 SQLITE_TIMEOUT_SECONDS = 15.0
 SQLITE_BUSY_TIMEOUT_MS = int(SQLITE_TIMEOUT_SECONDS * 1000)
 
@@ -217,6 +219,27 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS copilot_sessions (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT '新会话',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                context_snapshot_json TEXT NOT NULL DEFAULT '{}',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                parent_session_id TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS copilot_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                seq INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES copilot_sessions(id) ON DELETE CASCADE,
+                UNIQUE (session_id, seq)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_video_decrypt_jobs_status
             ON video_decrypt_jobs(status);
 
@@ -228,6 +251,12 @@ def init_db(db_path: Path = DB_PATH) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_tags_rating_listing
             ON tags(rating DESC, category, subcategory, tag);
+
+            CREATE INDEX IF NOT EXISTS idx_copilot_sessions_updated_at
+            ON copilot_sessions(updated_at);
+
+            CREATE INDEX IF NOT EXISTS idx_copilot_messages_session_id
+            ON copilot_messages(session_id);
             """
         )
         default_categories = [

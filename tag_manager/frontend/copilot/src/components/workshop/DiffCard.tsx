@@ -13,12 +13,16 @@ function tagText(op: PromptOperation) {
 
 export function DiffCard({
   turn,
+  stale,
+  onRecheck,
   onToggle,
   onApplyChecked,
   onApplyAll,
   onDiscard,
 }: {
   turn: Turn;
+  stale?: boolean;
+  onRecheck?: () => void;
   onToggle: (index: number) => void;
   onApplyChecked: () => void;
   onApplyAll: () => void;
@@ -27,12 +31,22 @@ export function DiffCard({
   const suggestion = turn.suggestion;
   if (!suggestion || !suggestion.operations.length) return null;
   const settled = !!(turn.applied || turn.discarded);
+  const outdated = !settled && !!stale;
   const title = turn.applied ? "已应用的修改" : turn.discarded ? "已放弃的建议" : "建议修改";
+  const state = turn.applied ? "applied" : turn.discarded ? "discarded" : outdated ? "stale" : "open";
   const selected = suggestion.operations.filter((_, i) => turn.checked?.[i] !== false).length;
 
   return (
-    <div className={`copilot-section ${settled ? "is-settled" : ""}`} data-copilot-diff="">
-      <p className="copilot-section-title">{title}</p>
+    <div
+      className={`copilot-section ${settled ? "is-settled" : ""} ${outdated ? "is-stale" : ""}`}
+      data-copilot-diff=""
+      data-copilot-diff-state={state}
+    >
+      <p className="copilot-section-title">
+        {title}
+        {turn.applied && <span className="copilot-diff-badge is-applied">已应用</span>}
+        {turn.discarded && <span className="copilot-diff-badge is-discarded">已放弃</span>}
+      </p>
       <div className="mb-2 grid gap-0">
         {suggestion.operations.map((op, i) => {
           const checked = turn.checked ? turn.checked[i] !== false : true;
@@ -44,7 +58,7 @@ export function DiffCard({
                 type="checkbox"
                 className="shrink-0"
                 checked={checked}
-                disabled={settled}
+                disabled={settled || outdated}
                 onChange={() => onToggle(i)}
               />
               <span className={`w-3 shrink-0 text-center font-bold ${signColor}`}>{sign(op)}</span>
@@ -61,7 +75,15 @@ export function DiffCard({
           );
         })}
       </div>
-      {!settled && (
+      {outdated && (
+        <div className="copilot-diff-stale" data-copilot-diff-stale="">
+          <p className="copilot-diff-stale-text">此建议基于较早的 Prompt</p>
+          <button type="button" data-copilot-recheck="" onClick={onRecheck}>
+            使用当前 Prompt 重新检查
+          </button>
+        </div>
+      )}
+      {!settled && !outdated && (
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <button type="button" data-copilot-apply="checked" onClick={onApplyChecked}>
             应用选中项
@@ -75,7 +97,7 @@ export function DiffCard({
         </div>
       )}
       {turn.applied && <p className="m-0 text-[11px] text-emerald-400">已写回工作区</p>}
-      {!settled && selected > 0 && (
+      {!settled && !outdated && selected > 0 && (
         <span className="sr-only">{selected}</span>
       )}
     </div>

@@ -13,7 +13,25 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
 
-from .copilot_service import CopilotError, generate_suggestion
+from .copilot_history import (
+    adapt_history_for_llm,
+    build_assistant_content,
+    build_error_content,
+    build_user_content,
+    snapshot_from_context,
+)
+from .copilot_service import CopilotError, generate_suggestion, user_visible_text
+from .copilot_sessions import (
+    SessionNotFound,
+    append_message,
+    create_session,
+    delete_session,
+    get_session_detail,
+    list_sessions,
+    patch_message_content,
+    rename_session,
+    resolve_or_create_session,
+)
 from .db import BASE_DIR, PROJECT_DIR, connect, init_db, upsert_category, upsert_character, upsert_recipe, upsert_tag, add_outfit
 from .folder_ops import (
     FolderInventory,
@@ -39,7 +57,7 @@ from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, 
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.20.1")
+app = FastAPI(title="夜之主衣柜", version="1.21.0")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
@@ -47,7 +65,7 @@ app.include_router(manga_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -269,7 +287,7 @@ def index(request: Request):
             "workflows": conn.execute("SELECT COUNT(*) FROM workflows").fetchone()[0],
         }
         recent_images = conn.execute("SELECT * FROM gallery_images ORDER BY updated_at DESC LIMIT 8").fetchall()
-    return templates.TemplateResponse("index.html", {"request": request, "stats": stats, "recent_images": recent_images})
+    return templates.TemplateResponse(request, "index.html", {"stats": stats, "recent_images": recent_images})
 
 
 @app.post("/import-magic-book")
@@ -361,9 +379,9 @@ def tags(request: Request, q: str = "", category: str = "", subcategory: str = "
         )
         category_sub_map = get_category_subcategory_map(conn)
     return templates.TemplateResponse(
+        request,
         "tags.html",
         {
-            "request": request,
             "rows": rows,
             "q": q,
             "category": category,
@@ -497,9 +515,9 @@ def gallery(
         categories = conn.execute("SELECT DISTINCT category FROM gallery_images WHERE category != '' ORDER BY category").fetchall()
         checkpoints = conn.execute("SELECT DISTINCT checkpoint FROM gallery_images WHERE checkpoint != '' ORDER BY checkpoint").fetchall()
     return templates.TemplateResponse(
+        request,
         "gallery.html",
         {
-            "request": request,
             "rows": rows,
             "folders": folders,
             "folder": folder,
@@ -662,9 +680,9 @@ def workflows(
         categories = conn.execute("SELECT DISTINCT category FROM workflows WHERE category != '' ORDER BY category").fetchall()
         checkpoints = conn.execute("SELECT DISTINCT checkpoint FROM workflows WHERE checkpoint != '' ORDER BY checkpoint").fetchall()
     return templates.TemplateResponse(
+        request,
         "workflows.html",
         {
-            "request": request,
             "rows": rows,
             "folders": folders,
             "folder": folder,
@@ -806,7 +824,7 @@ def workflow_delete(workflow_id: int):
 def llm_page(request: Request):
     with connect() as conn:
         settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
-    return templates.TemplateResponse("llm.html", {"request": request, "settings": settings, "answer": "", "message": ""})
+    return templates.TemplateResponse(request, "llm.html", {"settings": settings, "answer": "", "message": ""})
 
 
 @app.post("/llm/settings")
@@ -833,7 +851,7 @@ def llm_chat(request: Request, message: str = Form(...)):
         answer = chat_completion(settings["base_url"], settings["api_key"], settings["model"], settings["default_system_prompt"], message)
     except Exception as exc:
         answer = f"请求失败：{exc}"
-    return templates.TemplateResponse("llm.html", {"request": request, "settings": settings, "answer": answer, "message": message})
+    return templates.TemplateResponse(request, "llm.html", {"settings": settings, "answer": answer, "message": message})
 
 
 # ─── 配方库 ───────────────────────────────────────────────────────────────────
@@ -865,8 +883,9 @@ def recipes(request: Request, type: str = "", q: str = ""):
         ).fetchall()
     count_map = {r["type"]: r["count"] for r in counts}
     return templates.TemplateResponse(
+        request,
         "recipes.html",
-        {"request": request, "rows": rows, "type": type, "q": q, "recipe_types": RECIPE_TYPES, "count_map": count_map},
+        {"rows": rows, "type": type, "q": q, "recipe_types": RECIPE_TYPES, "count_map": count_map},
     )
 
 
@@ -929,7 +948,7 @@ def characters(request: Request, q: str = ""):
     outfit_map: dict[int, list] = {}
     for o in outfits:
         outfit_map.setdefault(o["character_id"], []).append(o)
-    return templates.TemplateResponse("characters.html", {"request": request, "rows": rows, "outfit_map": outfit_map, "q": q})
+    return templates.TemplateResponse(request, "characters.html", {"rows": rows, "outfit_map": outfit_map, "q": q})
 
 
 @app.post("/characters/add")
@@ -1028,9 +1047,9 @@ def workshop(request: Request):
     with connect() as conn:
         settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
     return templates.TemplateResponse(
+        request,
         "workshop.html",
         {
-            "request": request,
             "characters": get_characters_data(),
             "recipes": get_recipes_data(),
             "settings": settings,
@@ -1041,17 +1060,153 @@ def workshop(request: Request):
 # ─── 工坊 JSON API ────────────────────────────────────────────────────────────
 
 
+def _copilot_connect():
+    return connect()
+
+
+def _session_snapshot_from_body(body: dict | None) -> dict:
+    body = body if isinstance(body, dict) else {}
+    extra = body.get("context_snapshot")
+    context = body.get("context") if isinstance(body.get("context"), dict) else {}
+    return snapshot_from_context(context, extra if isinstance(extra, dict) else None)
+
+
+def _copilot_error_payload(message: str, session: dict | None = None, user_message=None, assistant_message=None) -> dict:
+    payload = {"error": message}
+    if session:
+        payload["session_id"] = session["id"]
+        payload["session"] = session
+    if user_message:
+        payload["user_message_id"] = user_message["id"]
+    if assistant_message:
+        payload["assistant_message_id"] = assistant_message["id"]
+    return payload
+
+
+@app.get("/api/workshop/copilot/sessions")
+def api_list_copilot_sessions(q: str = ""):
+    sessions = list_sessions(q=q, connect_factory=_copilot_connect)
+    return JSONResponse({"sessions": sessions})
+
+
+@app.post("/api/workshop/copilot/sessions")
+def api_create_copilot_session(request_body: dict | None = None):
+    body = request_body if isinstance(request_body, dict) else {}
+    title = str(body.get("title") or "").strip()
+    snapshot = _session_snapshot_from_body(body)
+    session = create_session(
+        title=title,
+        context_snapshot=snapshot,
+        connect_factory=_copilot_connect,
+    )
+    return JSONResponse(session)
+
+
+@app.get("/api/workshop/copilot/sessions/{session_id}")
+def api_get_copilot_session(session_id: str):
+    try:
+        detail = get_session_detail(session_id, connect_factory=_copilot_connect)
+    except SessionNotFound:
+        return JSONResponse({"error": "会话不存在"}, status_code=404)
+    return JSONResponse(detail)
+
+
+@app.patch("/api/workshop/copilot/sessions/{session_id}")
+def api_patch_copilot_session(session_id: str, request_body: dict | None = None):
+    body = request_body if isinstance(request_body, dict) else {}
+    if "title" not in body:
+        return JSONResponse({"error": "缺少 title"}, status_code=400)
+    try:
+        session = rename_session(session_id, str(body.get("title") or ""), connect_factory=_copilot_connect)
+    except SessionNotFound:
+        return JSONResponse({"error": "会话不存在"}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse(session)
+
+
+@app.delete("/api/workshop/copilot/sessions/{session_id}")
+def api_delete_copilot_session(session_id: str):
+    try:
+        session = delete_session(session_id, connect_factory=_copilot_connect)
+    except SessionNotFound:
+        return JSONResponse({"error": "会话不存在"}, status_code=404)
+    remaining = list_sessions(connect_factory=_copilot_connect)
+    return JSONResponse({"ok": True, "id": session["id"], "sessions": remaining})
+
+
+@app.patch("/api/workshop/copilot/sessions/{session_id}/messages/{message_id}")
+def api_patch_copilot_message(session_id: str, message_id: str, request_body: dict | None = None):
+    body = request_body if isinstance(request_body, dict) else {}
+    try:
+        message = patch_message_content(session_id, message_id, body, connect_factory=_copilot_connect)
+    except SessionNotFound:
+        return JSONResponse({"error": "会话不存在"}, status_code=404)
+    return JSONResponse(message)
+
+
 @app.post("/api/workshop/copilot")
 def api_workshop_copilot(request_body: dict):
-    """工坊 Copilot：调用 LLM 产出结构化诊断与 Prompt 修改建议。"""
+    """工坊 Copilot：一次请求内校验 Session、落库 user/assistant、再调用 LLM。"""
+    body = request_body if isinstance(request_body, dict) else {}
+    snapshot = _session_snapshot_from_body(body)
+    try:
+        session = resolve_or_create_session(
+            body.get("session_id"),
+            context_snapshot=snapshot,
+            connect_factory=_copilot_connect,
+        )
+    except SessionNotFound:
+        return JSONResponse({"error": "会话不存在"}, status_code=404)
+
+    stored = []
+    try:
+        stored = get_session_detail(session["id"], connect_factory=_copilot_connect)["messages"]
+    except SessionNotFound:
+        return JSONResponse({"error": "会话不存在"}, status_code=404)
+
+    work_request = dict(body)
+    work_request["history"] = adapt_history_for_llm(stored)
+    action = str(work_request.get("action") or "").strip()
+    instruction = "" if work_request.get("instruction") is None else str(work_request.get("instruction"))
+    context = work_request.get("context") if isinstance(work_request.get("context"), dict) else {}
+    raw_enabled = context.get("enabled_contexts")
+    enabled = [item for item in raw_enabled if item in ("positive", "negative", "recipe")] if isinstance(raw_enabled, list) else []
+    user_msg = append_message(
+        session["id"],
+        "user",
+        build_user_content(
+            text=user_visible_text(action, instruction),
+            action=action,
+            contexts=enabled,
+        ),
+        connect_factory=_copilot_connect,
+    )
+    session = get_session_detail(session["id"], connect_factory=_copilot_connect)["session"]
+
     with connect() as conn:
         settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
     if not settings or not settings["base_url"] or not settings["api_key"] or not settings["model"]:
-        return JSONResponse({"error": "LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API"}, status_code=400)
-    use_tools = bool(request_body.get("use_tools", True))
+        err_msg = append_message(
+            session["id"],
+            "error",
+            build_error_content(message="LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API"),
+            connect_factory=_copilot_connect,
+        )
+        session = get_session_detail(session["id"], connect_factory=_copilot_connect)["session"]
+        return JSONResponse(
+            _copilot_error_payload(
+                "LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API",
+                session,
+                user_msg,
+                err_msg,
+            ),
+            status_code=400,
+        )
+    use_tools = bool(work_request.get("use_tools", True))
     try:
         result = generate_suggestion(
-            request_body,
+            work_request,
             base_url=settings["base_url"],
             api_key=settings["api_key"],
             model=settings["model"],
@@ -1059,7 +1214,27 @@ def api_workshop_copilot(request_body: dict):
         )
     except CopilotError as exc:
         status_code = getattr(exc, "status_code", 500) or 500
-        return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"])}, status_code=status_code)
+        message = _gacha_error_message(exc, settings["api_key"])
+        err_msg = append_message(
+            session["id"],
+            "error",
+            build_error_content(message=message),
+            connect_factory=_copilot_connect,
+        )
+        session = get_session_detail(session["id"], connect_factory=_copilot_connect)["session"]
+        return JSONResponse(_copilot_error_payload(message, session, user_msg, err_msg), status_code=status_code)
+
+    asst = append_message(
+        session["id"],
+        "assistant",
+        build_assistant_content(result, tools=result.get("tools") if isinstance(result.get("tools"), list) else []),
+        connect_factory=_copilot_connect,
+    )
+    session = get_session_detail(session["id"], connect_factory=_copilot_connect)["session"]
+    result["session_id"] = session["id"]
+    result["session"] = session
+    result["user_message_id"] = user_msg["id"]
+    result["assistant_message_id"] = asst["id"]
     return JSONResponse(result)
 
 

@@ -367,10 +367,9 @@ class CopilotEndpointTests(unittest.TestCase):
         with mock.patch.object(app_module, "generate_suggestion", side_effect=AssertionError("不应调用 LLM")):
             response = app_module.api_workshop_copilot(default_request())
         self.assertEqual(400, response.status_code)
-        self.assertEqual(
-            {"error": "LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API"},
-            response_json(response),
-        )
+        payload = response_json(response)
+        self.assertEqual("LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API", payload["error"])
+        self.assertTrue(payload.get("session_id"))
 
     def test端点use_tools为false时禁用工具(self) -> None:
         with db.connect(self.db_path) as conn:
@@ -397,6 +396,7 @@ class CopilotEndpointTests(unittest.TestCase):
             response = app_module.api_workshop_copilot(body)
         self.assertEqual(200, response.status_code)
         self.assertEqual({}, captured.get("tool_registry"))
+        self.assertTrue(response_json(response).get("session_id"))
 
 
 class CopilotToolLoopTests(unittest.TestCase):

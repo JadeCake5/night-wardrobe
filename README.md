@@ -2,7 +2,7 @@
 
 面向 Stable Diffusion / NoobAI 工作流的本地 Tag、角色卡、配方、图库与提示词工坊管理器。默认跑在本机，数据留在本机。
 
-当前版本：**v1.20.1**
+当前版本：**v1.21.0**
 
 ## 功能亮点
 
@@ -10,7 +10,7 @@
 - **角色卡** — 管理 LoRA、触发词、外观和可切换服装套组
 - **配方库** — 保存画师串、场景、负面模板和绘图参数，卡片上一键复制
 - **提示词工坊** — 组合角色、画师、场景，实时编辑 Positive / Negative Prompt
-- **工坊 Copilot** — 复用本地 LLM 设置，输出结构化诊断与 Diff；必须勾选后显式 Apply 才会写回 Prompt。支持 function-calling 只读查询 Tag 库、配方和角色卡
+- **工坊 Copilot** — 复用本地 LLM 设置，输出结构化诊断与 Diff；必须勾选后显式 Apply 才会写回 Prompt。支持 function-calling 只读查询 Tag 库、配方和角色卡。正式会话写入本机 SQLite，刷新或离开工坊后可恢复；历史 Diff 在当前 Prompt 已变化时进入 stale 态，需重新检查后再应用
 - **图库** — 扫描本地图片、解析 ComfyUI / 生成元数据、按文件夹管理
 
 附加工具（按需使用，不作为核心承诺）：LoRA 库、漫画下载、视频解密、工作流库、AI 抽卡。
@@ -124,13 +124,14 @@ npm run build
 
 ## 版本
 
-**v1.20.1** 最近亮点：
+**v1.21.0** 最近亮点：
 
-- 工坊 Copilot 接入真实 LLM，输出结构化诊断 / Diff
-- function-calling 只读查询 Tag 库、配方、角色卡；服务商不支持 tools 时静态降级
-- LLM 设置内嵌工坊齿轮，去掉侧栏独立「AI 设置」主入口
-- 修复 SPA 二次进入时内联脚本因顶层 `const` / `let` 失效
-- Copilot 建议列表改为紧凑可勾选列表；Apply 仍须用户显式确认
+- Workshop Copilot 正式 Session 持久化到本机 SQLite，支持新建 / 切换 / 重命名 / 删除 / 搜索
+- 刷新或离开工坊后可恢复 Diagnosis / Diff / Apply 状态；Pending 请求按 session_id 隔离
+- 发给 LLM 的历史会裁剪适配，当前工作区优先于旧快照
+- Session History 改为 IDE 式扁平触发条；搜索放进切换 Popover，重命名 / 删除收敛到会话历史菜单
+- 历史 Diff 在当前 Prompt 已变化时进入 stale 态，禁止直接 Apply
+- 含 v1.20.1：LLM 设置内嵌工坊齿轮；Copilot 真实 LLM + function-calling 只读工具；Apply 仍须用户显式确认
 
 ## 致谢 / Credits
 

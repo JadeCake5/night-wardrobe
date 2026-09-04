@@ -1,4 +1,5 @@
-import type { PromptContextPayload, PromptOperation } from "./types";
+import type { ContextSnapshot, PromptContextPayload, PromptOperation } from "./types";
+import { EMPTY_SNAPSHOT, normalizeSnapshot } from "./session";
 
 export const EVT_CONTEXT = "workshop:context-change";
 export const EVT_APPLY = "workshop:apply-prompt-operations";
@@ -13,6 +14,7 @@ declare global {
         negative: string;
         recipe: Record<string, number>;
       };
+      getContextSnapshot?: () => ContextSnapshot;
       applyEdited: (target: string, text: string) => void;
       highlightTag: (target: string, tag: string) => void;
       toast: (message: string) => void;
@@ -47,4 +49,21 @@ export function emitHighlight(host: HTMLElement, target: string, tag: string) {
 
 export function emitToast(host: HTMLElement, message: string) {
   host.dispatchEvent(new CustomEvent(EVT_TOAST, { bubbles: true, detail: { message } }));
+}
+
+export function readHostSnapshot(): ContextSnapshot {
+  const api = window.WorkshopAPI;
+  if (api?.getContextSnapshot) {
+    try {
+      return normalizeSnapshot(api.getContextSnapshot());
+    } catch {
+      /* 回退到 payload 预览 */
+    }
+  }
+  const payload = readHostContext();
+  return {
+    ...EMPTY_SNAPSHOT,
+    positive_preview: (payload.positive || "").replace(/\s+/g, " ").trim().slice(0, 160),
+    negative_preview: (payload.negative || "").replace(/\s+/g, " ").trim().slice(0, 120),
+  };
 }

@@ -405,3 +405,371 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ── Session 控件：IDE thread selector 风格，扁平不抢对话区 ── */
+#workshop-copilot-root .copilot-session-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  min-width: 0;
+  padding: 0 0 6px;
+}
+#workshop-copilot-root .copilot-session-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 26px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(237, 242, 255, 0.72);
+  font-size: 12px;
+  font-weight: 500;
+}
+#workshop-copilot-root .copilot-session-current-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#workshop-copilot-root .copilot-session-chevron {
+  flex: none;
+  font-size: 10px;
+  color: var(--copilot-muted);
+}
+#workshop-copilot-root .copilot-session-new {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--copilot-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+#workshop-copilot-root .copilot-session-new:hover,
+#workshop-copilot-root .copilot-session-current:hover {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--foreground);
+}
+#workshop-copilot-root .copilot-session-pop,
+#workshop-copilot-root .copilot-history-view {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+#workshop-copilot-root .copilot-session-pop {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 8;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: min(360px, 60vh);
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+#workshop-copilot-root .copilot-history-view {
+  flex: 1 1 0;
+  overflow: hidden;
+}
+#workshop-copilot-root .copilot-session-pop input[type="search"],
+#workshop-copilot-root .copilot-history-view input[type="search"],
+#workshop-copilot-root .copilot-session-rename input {
+  width: 100%;
+  height: 28px;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 7px;
+  background: rgba(2, 6, 23, 0.45);
+  color: var(--foreground);
+  font-size: 12px;
+}
+#workshop-copilot-root .copilot-session-list {
+  min-height: 0;
+  overflow: auto;
+  max-height: 240px;
+}
+#workshop-copilot-root .copilot-session-list.is-full {
+  flex: 1 1 0;
+  max-height: none;
+}
+#workshop-copilot-root .copilot-session-group-label {
+  margin: 6px 6px 2px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--copilot-muted);
+}
+#workshop-copilot-root .copilot-session-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 2px;
+  border-radius: 6px;
+  color: inherit;
+  text-align: left;
+}
+#workshop-copilot-root .copilot-session-item:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+#workshop-copilot-root .copilot-session-pick,
+#workshop-copilot-root button.copilot-session-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 28px;
+  padding: 0 6px;
+  color: rgba(237, 242, 255, 0.82);
+  font-size: 12px;
+  text-align: left;
+}
+#workshop-copilot-root .copilot-session-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: transparent;
+  flex: none;
+}
+#workshop-copilot-root .copilot-session-item.is-active .copilot-session-dot {
+  background: rgba(196, 181, 253, 0.95);
+}
+#workshop-copilot-root .copilot-session-item.is-active .copilot-session-name {
+  color: var(--foreground);
+}
+#workshop-copilot-root .copilot-session-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#workshop-copilot-root .copilot-session-time {
+  flex: none;
+  color: var(--copilot-muted);
+  font-size: 10px;
+}
+#workshop-copilot-root .copilot-session-kebab {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--copilot-muted);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+}
+#workshop-copilot-root .copilot-session-item:hover .copilot-session-kebab,
+#workshop-copilot-root .copilot-session-kebab[aria-expanded="true"] {
+  opacity: 1;
+}
+#workshop-copilot-root .copilot-session-kebab:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--foreground);
+}
+#workshop-copilot-root .copilot-session-actions {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  padding: 0 6px 4px 17px;
+}
+#workshop-copilot-root .copilot-session-actions button {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--copilot-muted);
+  font-size: 11px;
+}
+#workshop-copilot-root .copilot-session-actions button:hover {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--foreground);
+}
+#workshop-copilot-root .copilot-session-all {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  margin-top: 4px;
+  padding: 0 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 0 0 6px 6px;
+  color: var(--copilot-muted);
+  font-size: 12px;
+}
+#workshop-copilot-root .copilot-session-all:hover {
+  color: rgba(196, 181, 253, 0.92);
+}
+#workshop-copilot-root .copilot-history-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 0 0 8px;
+}
+#workshop-copilot-root .copilot-history-head button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--copilot-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+#workshop-copilot-root .copilot-history-head button:hover {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--foreground);
+}
+#workshop-copilot-root .copilot-history-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(237, 242, 255, 0.82);
+}
+#workshop-copilot-root .copilot-session-empty,
+#workshop-copilot-root .copilot-session-loading {
+  margin: 8px 4px;
+  color: var(--copilot-muted);
+  font-size: 12px;
+}
+#workshop-copilot-root .copilot-session-rename,
+#workshop-copilot-root .copilot-session-confirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+#workshop-copilot-root .copilot-session-rename input {
+  margin: 0;
+  flex: 1 1 auto;
+}
+#workshop-copilot-root .copilot-session-confirm span {
+  flex: 1 1 auto;
+  font-size: 12px;
+}
+#workshop-copilot-root .copilot-old-ctx {
+  flex: none;
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(250, 204, 21, 0.14);
+  border-radius: 8px;
+  background: rgba(250, 204, 21, 0.05);
+}
+#workshop-copilot-root .copilot-old-ctx-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+#workshop-copilot-root .copilot-old-ctx-icon {
+  flex: none;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(253, 230, 138, 0.85);
+}
+#workshop-copilot-root .copilot-old-ctx-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+#workshop-copilot-root .copilot-old-ctx-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(253, 230, 138, 0.92);
+}
+#workshop-copilot-root .copilot-old-ctx-body {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(253, 230, 138, 0.66);
+}
+#workshop-copilot-root .copilot-old-ctx button {
+  flex: none;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(253, 230, 138, 0.85);
+  font-size: 11px;
+  white-space: nowrap;
+}
+#workshop-copilot-root .copilot-old-ctx button:hover {
+  background: rgba(250, 204, 21, 0.1);
+}
+#workshop-copilot-root .copilot-old-ctx-dl {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+}
+#workshop-copilot-root .copilot-old-ctx-dl dt {
+  color: var(--copilot-muted);
+}
+#workshop-copilot-root .copilot-old-ctx-dl dd {
+  margin: 0;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#workshop-copilot-root .copilot-diff-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+}
+#workshop-copilot-root .copilot-diff-badge.is-applied {
+  background: rgba(52, 211, 153, 0.12);
+  color: rgba(110, 231, 183, 0.9);
+}
+#workshop-copilot-root .copilot-diff-badge.is-discarded {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--copilot-muted);
+}
+#workshop-copilot-root .copilot-section.is-stale {
+  opacity: 0.82;
+}
+#workshop-copilot-root .copilot-diff-stale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 2px 0;
+}
+#workshop-copilot-root .copilot-diff-stale-text {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(253, 230, 138, 0.78);
+}
+#workshop-copilot-root .copilot-diff-stale button {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(250, 204, 21, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(253, 230, 138, 0.9);
+  font-size: 11px;
+}
+#workshop-copilot-root .copilot-diff-stale button:hover {
+  background: rgba(250, 204, 21, 0.08);
+}

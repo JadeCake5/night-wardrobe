@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-import os
 import tempfile
 import threading
 import time
@@ -34,14 +33,7 @@ from tag_manager.video_decrypt_service import (
     safe_source_name,
 )
 
-def _upstream_root() -> Path:
-    raw = os.environ.get("WARDROBE_VIDEO_DECRYPTOR_ROOT", "").strip()
-    if not raw:
-        raise unittest.SkipTest("未设置 WARDROBE_VIDEO_DECRYPTOR_ROOT，跳过依赖上游仓库的测试")
-    root = Path(raw)
-    if not root.is_dir() or not (root / "video_crypto.py").is_file():
-        raise unittest.SkipTest("WARDROBE_VIDEO_DECRYPTOR_ROOT 不是有效的上游仓库目录")
-    return root
+UPSTREAM_ROOT = Path(r"D:\User\Github\comfyui-encrypt-video")
 
 
 class FakeAdapter:
@@ -87,7 +79,7 @@ def wait_for_status(service: VideoDecryptService, job_id: int, expected: set[str
 
 class VideoDecryptAdapterTests(unittest.TestCase):
     def test运行时解析上游版本与密码学环境(self) -> None:
-        adapter = VideoDecryptAdapter(_upstream_root())
+        adapter = VideoDecryptAdapter(UPSTREAM_ROOT)
         runtime = adapter.inspect_runtime()
 
         self.assertTrue(runtime.available, runtime.message)
@@ -98,12 +90,11 @@ class VideoDecryptAdapterTests(unittest.TestCase):
         self.assertTrue(runtime.cryptography_version)
 
     def test配置文件可定位上游且业务代码不依赖绝对路径(self) -> None:
-        upstream_root = _upstream_root()
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.json"
-            config_path.write_text(json.dumps({"upstream_root": str(upstream_root)}), encoding="utf-8")
+            config_path.write_text(json.dumps({"upstream_root": str(UPSTREAM_ROOT)}), encoding="utf-8")
             resolved = resolve_upstream_root(config_path=config_path)
-        self.assertEqual(upstream_root.resolve(), resolved)
+        self.assertEqual(UPSTREAM_ROOT.resolve(), resolved)
 
     def test上游错误转换为稳定错误代码(self) -> None:
         cases = [
@@ -383,8 +374,8 @@ class RealVideoDecryptIntegrationTests(unittest.TestCase):
             root = Path(temp_dir)
             db_path = root / "test.sqlite3"
             db.init_db(db_path)
-            adapter = VideoDecryptAdapter(_upstream_root())
-            upstream = load_upstream_module(_upstream_root())
+            adapter = VideoDecryptAdapter(UPSTREAM_ROOT)
+            upstream = load_upstream_module(UPSTREAM_ROOT)
             frames = np.random.default_rng(7).random((3, 12, 18, 3), dtype=np.float32)
             encrypted = root / "encrypted.evideo"
             sample_rate = 8000
@@ -471,7 +462,7 @@ class VideoDecryptStaticIntegrationTests(unittest.TestCase):
         style = (base_dir / "static" / "style.css").read_text(encoding="utf-8")
 
         self.assertIn('href="/video-decrypt"', base_html)
-        self.assertIn("v1.20.1", base_html)
+        self.assertIn("v1.21.0", base_html)
         self.assertIn("style.css?v=79", base_html)
         self.assertIn("window.__wardrobePageCleanup", base_html)
         self.assertIn('name="password" type="password" autocomplete="off"', template)

@@ -31,6 +31,14 @@ export type PromptRequest = {
   customInstruction?: string;
   contexts?: Array<"positive" | "negative" | "recipe">;
   history?: Array<{ role: "user" | "assistant"; text: string }>;
+  session_id?: string;
+};
+
+export type ToolSummary = {
+  name: string;
+  status: string;
+  summary: string;
+  result_summary?: string;
 };
 
 export type PromptSuggestion = {
@@ -40,6 +48,10 @@ export type PromptSuggestion = {
   operations: PromptOperation[];
   diagnostics?: Diagnostic[];
   stages?: ExecutionStage[];
+  tools?: ToolSummary[];
+  session_id?: string;
+  user_message_id?: string;
+  assistant_message_id?: string;
 };
 
 export type Turn = {
@@ -50,6 +62,7 @@ export type Turn = {
   contexts?: Array<"positive" | "negative" | "recipe">;
   status?: "pending" | "done";
   suggestion?: PromptSuggestion;
+  tools?: ToolSummary[];
   applied?: boolean;
   discarded?: boolean;
   checked?: boolean[];
@@ -62,3 +75,56 @@ export type PromptContextPayload = {
   negative?: string;
   recipe?: Record<string, number>;
 };
+
+export type ContextSnapshot = {
+  character: string;
+  outfit: string;
+  artist: string;
+  scene: string;
+  negative_template: string;
+  positive_preview: string;
+  negative_preview: string;
+};
+
+export type MessagePart = {
+  type: "text" | "diagnosis" | "diff" | "tool" | "execution" | "error";
+  data: Record<string, unknown>;
+};
+
+export type CopilotSession = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  context_snapshot: ContextSnapshot;
+  metadata?: Record<string, unknown>;
+  parent_session_id?: string | null;
+};
+
+export type CopilotMessage = {
+  id: string;
+  session_id: string;
+  seq: number;
+  role: "user" | "assistant" | "error";
+  content: {
+    id?: string;
+    role?: string;
+    text?: string;
+    created_at?: string;
+    action?: Action;
+    contexts?: Array<"positive" | "negative" | "recipe">;
+    suggestion_id?: string;
+    applied?: boolean;
+    discarded?: boolean;
+    checked?: boolean[];
+    parts?: MessagePart[];
+  };
+  created_at: string;
+};
+
+export class CopilotRequestError extends Error {
+  session_id?: string;
+  user_message_id?: string;
+  assistant_message_id?: string;
+  status?: number;
+}

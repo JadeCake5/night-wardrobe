@@ -354,6 +354,10 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .folder-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding-top: 4px; }
 #wsLlmSettingsDialog textarea { min-height: 120px; }
 .ws-copilot-head-actions { display: flex; align-items: center; gap: 4px; }
+/* 头部齿轮与 × 同规格的紧凑图标按钮；全局 button 的紫色渐变/大 padding 在此不适用 */
+.ws-copilot-head-actions .icon-btn { width: 28px; height: 28px; min-height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 8px; background: transparent; color: rgba(148,163,184,.52); box-shadow: none; cursor: pointer; transition: all .15s ease; }
+.ws-copilot-head-actions .icon-btn:hover { color: #f5f3ff; background: rgba(148,163,184,.12); transform: none; box-shadow: none; }
+.ws-copilot-head-actions .icon-btn svg { width: 16px; height: 16px; }
 .ws-llm-toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,.6); }
 .ws-llm-toggle strong { display: block; font-size: 13px; }
 .ws-llm-toggle span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
@@ -738,11 +742,11 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .ws-copilot-pane { display: none; position: relative; box-sizing: border-box; flex: 0 0 var(--copilot-width, 380px); width: var(--copilot-width, 380px); min-width: 340px; max-width: 520px; min-height: 0; flex-direction: column; padding: 0 18px 14px; overflow: hidden; background: color-mix(in srgb, var(--bg-midnight) 62%, #1a2744); border-left: 1px solid rgba(148, 163, 184, 0.10); box-shadow: none; backdrop-filter: blur(12px); }
 .ws-workbench.is-copilot-open .ws-copilot-pane { display: flex; }
 #workshop-copilot-root { flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; display: flex; flex-direction: column; }
-.ws-copilot-head { flex: none; display: flex; justify-content: space-between; align-items: center; height: 56px; margin: 0; border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
+.ws-copilot-head { flex: none; display: flex; justify-content: space-between; align-items: center; height: 44px; margin: 0; border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
 .ws-copilot-title-group { display: flex; align-items: center; gap: 8px; }
 .ws-copilot-head-sparkle { width: 17px; height: 17px; color: #c084fc; filter: drop-shadow(0 0 6px rgba(192,132,252,0.45)); flex: none; }
-.ws-copilot-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: rgba(237, 242, 255, 0.88); letter-spacing: -0.01em; }
-.ws-copilot-close { width: 32px; height: 32px; padding: 0; border-radius: 8px; border: none; background: transparent; color: rgba(148, 163, 184, 0.52); font-size: 20px; line-height: 1; box-shadow: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .15s ease; }
+.ws-copilot-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: rgba(237, 242, 255, 0.88); letter-spacing: -0.01em; }
+.ws-copilot-close { width: 28px; height: 28px; padding: 0; border-radius: 8px; border: none; background: transparent; color: rgba(148, 163, 184, 0.52); font-size: 16px; line-height: 1; box-shadow: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .15s ease; }
 .ws-copilot-close:hover { color: #f5f3ff; background: rgba(148, 163, 184, 0.12); transform: none; box-shadow: none; }
 .ws-copilot-resizer { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; z-index: 2; display: flex; align-items: center; justify-content: center; transition: background .15s ease; }
 .ws-copilot-resizer::after { content: ""; width: 2px; height: 28px; border-radius: 999px; background: rgba(148, 163, 184, 0.18); transition: all .15s ease; opacity: 0; }
@@ -751,6 +755,11 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .ws-copilot-resizer[hidden] { display: none; }
 .ws-copilot-mask { display: none; }
 .ws-copilot-btn[aria-pressed="true"] { background: rgba(124,58,237,.28); color: #e9d5ff; border-color: rgba(168,85,247,.48); }
+
+/* 输入区压低 + 顶部留白收紧，把空间让给消息列表（Island 构建产物 copilot.css 的作用域覆盖，选择器优先级更高） */
+.ws-copilot-pane #workshop-copilot-root textarea[data-copilot-input] { min-height: 60px; max-height: 150px; padding-top: 8px; padding-bottom: 4px; }
+.ws-copilot-pane #workshop-copilot-root [data-copilot-composer-area] { padding-top: 6px; }
+.ws-copilot-pane #workshop-copilot-root .copilot-composer-hint { margin-top: 4px; }
 
 .copilot-conv { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
 .copilot-conv::-webkit-scrollbar { width: 6px; }

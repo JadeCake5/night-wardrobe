@@ -271,8 +271,8 @@ class WorkshopCopilotDockLayoutTests(unittest.TestCase):
         self.assertIn('id="copilotResizer"', self.tpl)
         self.assertIn(".ws-workbench.is-copilot-open .ws-workspace { min-width: 480px; }", self.style)
         self.assertIn("max-height: calc(100vh - 108px);", self.style)
-        self.assertIn("height: 56px;", self.style.split(".ws-copilot-head {", 1)[1][:220])
-        self.assertIn("font-size: 15px;", self.style.split(".ws-copilot-head h2 {", 1)[1][:180])
+        self.assertIn("height: 44px;", self.style.split(".ws-copilot-head {", 1)[1][:220])
+        self.assertIn("font-size: 14px;", self.style.split(".ws-copilot-head h2 {", 1)[1][:180])
 
     def test打开后主区仍可交互且Esc不抢编辑(self) -> None:
         self.assertIn("if (e.key === 'Escape' && isOverlayMode() && isOpen()) closeDrawer();", self.js)
@@ -507,8 +507,8 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
     def test侧栏不再包含AI设置入口(self) -> None:
         self.assertNotIn('href="/llm"', self.base)
         self.assertNotIn("AI 设置", self.base)
-        self.assertIn("v1.24.0", self.base)
-        self.assertIn("style.css?v=83", self.base)
+        self.assertIn("v1.24.1", self.base)
+        self.assertIn("style.css?v=85", self.base)
 
     def test工坊header有设置按钮与dialog(self) -> None:
         self.assertIn('id="wsLlmSettingsBtn"', self.tpl)

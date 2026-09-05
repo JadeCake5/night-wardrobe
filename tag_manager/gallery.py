@@ -17,6 +17,8 @@ OLD_GALLERY_DIR = PROJECT_DIR / "提示词图库"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 LORA_RE = re.compile(r"<lora:([^:>]+)(?::([^>]+))?>", re.IGNORECASE)
 USER_COMMENT_TAG = 37510
+EXIF_IFD_TAG = 34665
+EXIF_IFD_POINTER_TAGS = {34665, 34853, 40965}
 _SCAN_LOCK = threading.Lock()
 
 
@@ -76,7 +78,14 @@ def read_image_metadata(path: Path) -> dict[str, str]:
             except Exception:
                 exif = None
             if exif:
-                for key, value in exif.items():
+                entries = list(exif.items())
+                try:
+                    entries.extend(exif.get_ifd(EXIF_IFD_TAG).items())
+                except Exception:
+                    pass
+                for key, value in entries:
+                    if key in EXIF_IFD_POINTER_TAGS:
+                        continue
                     label = str(key)
                     text = clean_exif_text(value)
                     if text:
@@ -125,7 +134,7 @@ def find_ksampler_connections(prompt_data: dict) -> tuple[str, str]:
         if positive_node_id:
             break
 
-    def trace_text(node_id: str, visited: set | None = None) -> str:
+    def trace_text(node_id: str, want: str = "", visited: set | None = None) -> str:
         if visited is None:
             visited = set()
         if node_id in visited or node_id not in prompt_data:
@@ -141,16 +150,26 @@ def find_ksampler_connections(prompt_data: dict) -> tuple[str, str]:
             if isinstance(text, str) and text.strip() and ("Text" in class_type or "CLIPTextEncode" in class_type or "String" in class_type):
                 return text.strip()
             if isinstance(text, list) and len(text) >= 1:
-                return trace_text(str(text[0]), visited)
+                result = trace_text(str(text[0]), want, visited)
+                if result:
+                    return result
+            if want:
+                direct = inputs.get(want)
+                if isinstance(direct, str) and direct.strip():
+                    return direct.strip()
+                if isinstance(direct, list) and len(direct) >= 1:
+                    result = trace_text(str(direct[0]), want, visited)
+                    if result:
+                        return result
             clip_input = inputs.get("conditioning") or inputs.get("clip")
             if isinstance(clip_input, list) and len(clip_input) >= 1:
-                result = trace_text(str(clip_input[0]), visited)
+                result = trace_text(str(clip_input[0]), want, visited)
                 if result:
                     return result
         return ""
 
-    positive = trace_text(positive_node_id) if positive_node_id else ""
-    negative = trace_text(negative_node_id) if negative_node_id else ""
+    positive = trace_text(positive_node_id, "positive") if positive_node_id else ""
+    negative = trace_text(negative_node_id, "negative") if negative_node_id else ""
     return positive, negative
 
 

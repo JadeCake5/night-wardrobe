@@ -438,7 +438,7 @@ class CopilotSettingsStaticTests(unittest.TestCase):
             self.assertIn(needle, self.tpl)
         for provider in ("硅基流动", "DeepSeek", "OpenAI 兼容"):
             self.assertIn(provider, self.tpl)
-        self.assertIn("v1.24.1", self.base)
+        self.assertIn("v1.24.2", self.base)
         self.assertIn("style.css?v=85", self.base)
 
     def test脚本走JSON接口且不提交表单(self) -> None:

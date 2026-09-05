@@ -19,6 +19,7 @@ LORA_RE = re.compile(r"<lora:([^:>]+)(?::([^>]+))?>", re.IGNORECASE)
 USER_COMMENT_TAG = 37510
 EXIF_IFD_TAG = 34665
 EXIF_IFD_POINTER_TAGS = {34665, 34853, 40965}
+PARSER_VERSION = 2
 _SCAN_LOCK = threading.Lock()
 
 
@@ -319,8 +320,8 @@ def extract_prompts(meta: dict[str, str]) -> tuple[str, str, str, str, str, str,
 
 _UPSERT_SQL = """
     INSERT INTO gallery_images
-        (path, title, category, positive_prompt, negative_prompt, workflow_json, prompt_json, parameters, checkpoint, loras, metadata_json, metadata_source, generation_params, file_mtime, file_size)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (path, title, category, positive_prompt, negative_prompt, workflow_json, prompt_json, parameters, checkpoint, loras, metadata_json, metadata_source, generation_params, file_mtime, file_size, parser_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
         title=excluded.title,
         category=excluded.category,
@@ -336,6 +337,7 @@ _UPSERT_SQL = """
         generation_params=excluded.generation_params,
         file_mtime=excluded.file_mtime,
         file_size=excluded.file_size,
+        parser_version=excluded.parser_version,
         updated_at=CURRENT_TIMESTAMP
 """
 
@@ -349,7 +351,7 @@ def ingest_image(conn, path: Path, root: Path = GALLERY_DIR) -> None:
     category = path.parent.name if path.parent != root else ""
     conn.execute(
         _UPSERT_SQL,
-        (rel, path.stem, category, positive, negative, workflow_raw, prompt_raw, parameters, checkpoint, loras, metadata_json, metadata_source, generation_params, stat.st_mtime, stat.st_size),
+        (rel, path.stem, category, positive, negative, workflow_raw, prompt_raw, parameters, checkpoint, loras, metadata_json, metadata_source, generation_params, stat.st_mtime, stat.st_size, PARSER_VERSION),
     )
 
 
@@ -381,14 +383,14 @@ def scan_gallery(root: Path = GALLERY_DIR, *, initialize_db: bool = True) -> int
         seen_paths: set[str] = set()
         with connect() as conn:
             fingerprints = {
-                row["path"]: (row["file_mtime"], row["file_size"])
-                for row in conn.execute("SELECT path, file_mtime, file_size FROM gallery_images")
+                row["path"]: (row["file_mtime"], row["file_size"], row["parser_version"])
+                for row in conn.execute("SELECT path, file_mtime, file_size, parser_version FROM gallery_images")
             }
             for path in iter_images(root):
                 rel = path.relative_to(GALLERY_DIR).as_posix()
                 seen_paths.add(rel)
                 stat = path.stat()
-                if fingerprints.get(rel) == (stat.st_mtime, stat.st_size):
+                if fingerprints.get(rel) == (stat.st_mtime, stat.st_size, PARSER_VERSION):
                     continue
                 ingest_image(conn, path, root)
                 count += 1

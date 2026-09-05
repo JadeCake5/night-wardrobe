@@ -99,6 +99,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 generation_params TEXT DEFAULT '',
                 file_mtime REAL DEFAULT 0,
                 file_size INTEGER DEFAULT 0,
+                parser_version INTEGER NOT NULL DEFAULT 0,
                 rating INTEGER DEFAULT 0,
                 notes TEXT DEFAULT '',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -313,6 +314,7 @@ def ensure_gallery_image_columns(conn: sqlite3.Connection) -> None:
         "generation_params": "TEXT DEFAULT ''",
         "file_mtime": "REAL DEFAULT 0",
         "file_size": "INTEGER DEFAULT 0",
+        "parser_version": "INTEGER NOT NULL DEFAULT 0",
     }
     for name, definition in columns.items():
         if name not in existing:

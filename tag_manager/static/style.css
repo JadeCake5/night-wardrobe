@@ -54,7 +54,7 @@ input, select, textarea { box-sizing: border-box; border: 1px solid rgba(148,163
 .labeled-form input, .labeled-form select, .labeled-form textarea,
 .panel input, .panel select, .panel textarea,
 .ws-section textarea,
-.folder-dialog select, .folder-dialog input[type="text"], .folder-dialog textarea,
+.folder-dialog select, .folder-dialog input[type="text"], .folder-dialog input[type="password"], .folder-dialog textarea,
 .outfit-add-form input, .outfit-add-form textarea,
 .video-decrypt-fields input, .video-decrypt-fields select,
 .image-card textarea,
@@ -353,6 +353,32 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .folder-recursive-confirm input { width: 18px; min-height: 18px; margin: 1px 0 0; flex: 0 0 auto; }
 .folder-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding-top: 4px; }
 #wsLlmSettingsDialog textarea { min-height: 120px; }
+.ws-copilot-head-actions { display: flex; align-items: center; gap: 4px; }
+.ws-llm-toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,.6); }
+.ws-llm-toggle strong { display: block; font-size: 13px; }
+.ws-llm-toggle span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.ws-switch { position: relative; width: 40px; min-width: 40px; height: 22px; border-radius: 999px; border: none; background: #334155; flex: 0 0 auto; padding: 0; box-shadow: none; }
+.ws-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
+.ws-switch[aria-checked="true"] { background: #7c3aed; }
+.ws-switch[aria-checked="true"]::after { left: 21px; }
+.ws-llm-status { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); font-size: 12px; }
+.ws-llm-status strong { font-size: 13px; }
+.ws-llm-status span { color: var(--muted); }
+.ws-llm-status[data-state="ready"] { border-color: rgba(52,211,153,.35); background: rgba(6,95,70,.2); }
+.ws-llm-status[data-state="ready"] strong { color: #6ee7b7; }
+.ws-llm-status[data-state="off"] { border-color: rgba(148,163,184,.3); }
+.ws-llm-status[data-state="missing"] { border-color: rgba(248,113,113,.35); background: rgba(127,29,29,.2); }
+.ws-llm-status[data-state="missing"] strong { color: #fca5a5; }
+.ws-llm-model-row { display: flex; gap: 8px; }
+.ws-llm-model-row input { flex: 1; min-width: 0; }
+.ws-llm-model-list { max-height: 160px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #0b1220; }
+.ws-llm-model-list button { display: block; width: 100%; text-align: left; background: transparent; border: none; color: #cbd5e1; padding: 6px 10px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; box-shadow: none; border-radius: 0; }
+.ws-llm-model-list button:hover { background: rgba(148,163,184,.12); transform: none; box-shadow: none; }
+.ws-llm-model-list button.is-active { color: #e9d5ff; background: rgba(124,58,237,.16); }
+.ws-llm-error { margin: 0; color: #fca5a5; font-size: 12px; }
+.ws-toast-success { border-color: rgba(52,211,153,.45); color: #6ee7b7; }
+.ws-toast-error { border-color: rgba(248,113,113,.45); color: #fca5a5; }
+.ws-toast-warning { border-color: rgba(251,191,36,.45); color: #fcd34d; }
 .notice-success { border-color: rgba(74,222,128,.48); background: rgba(20,83,45,.3); color: #bbf7d0; }
 .notice-warning { border-color: rgba(251,191,36,.48); background: rgba(120,53,15,.3); color: #fde68a; }
 .notice-error { border-color: rgba(248,113,113,.5); background: rgba(127,29,29,.28); color: #fecaca; }
@@ -690,7 +716,7 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 @media (prefers-reduced-motion: reduce) { .ws-flash { animation: none; } .ws-hl { transition: none; } }
 
 /* 轻提示 toast（菜单 placeholder 项与操作反馈） */
-.ws-toast { position: fixed; right: 20px; bottom: 20px; z-index: 90; padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-strong); color: var(--text); font-size: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.4); opacity: 0; pointer-events: none; transition: opacity .15s; }
+.ws-toast { position: fixed; right: 20px; bottom: 20px; z-index: 1200; padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-strong); color: var(--text); font-size: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.4); opacity: 0; pointer-events: none; transition: opacity .15s; }
 .ws-toast.show { opacity: 1; }
 
 /* 工坊左侧选项与预览分段同色：左色条 + 淡色衬底（叠在深色基底上） */
@@ -705,14 +731,18 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 /* AI Copilot 停靠面板：与配方/工作区同一布局层级，不是 modal
    交互规范参考 vercel/ai-elements（Apache-2.0），未引入其代码与依赖
    背景比工作区主 surface 高一级，仅左侧 1px 分隔，无 floating shadow */
-.ws-copilot-pane { display: none; position: relative; box-sizing: border-box; flex: 0 0 var(--copilot-width, 380px); width: var(--copilot-width, 380px); min-width: 340px; max-width: 520px; min-height: 0; flex-direction: column; padding: 0 18px 14px; overflow: hidden; background: color-mix(in srgb, var(--bg-midnight) 62%, #1a2744); border-left: 1px solid rgba(148, 163, 184, 0.10); box-shadow: none; }
+.ws-copilot-pane { display: none; position: relative; box-sizing: border-box; flex: 0 0 var(--copilot-width, 380px); width: var(--copilot-width, 380px); min-width: 340px; max-width: 520px; min-height: 0; flex-direction: column; padding: 0 18px 14px; overflow: hidden; background: color-mix(in srgb, var(--bg-midnight) 62%, #1a2744); border-left: 1px solid rgba(148, 163, 184, 0.10); box-shadow: none; backdrop-filter: blur(12px); }
 .ws-workbench.is-copilot-open .ws-copilot-pane { display: flex; }
 #workshop-copilot-root { flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; display: flex; flex-direction: column; }
-.ws-copilot-head { flex: none; display: flex; justify-content: space-between; align-items: center; height: 56px; margin: 0; }
-.ws-copilot-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: rgba(237, 242, 255, 0.82); }
-.ws-copilot-close { width: 32px; height: 32px; padding: 0; border-radius: 8px; border: none; background: transparent; color: rgba(148, 163, 184, 0.52); font-size: 20px; line-height: 1; box-shadow: none; }
-.ws-copilot-close:hover { color: #f5f3ff; background: rgba(148, 163, 184, 0.08); transform: none; box-shadow: none; }
-.ws-copilot-resizer { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; z-index: 2; }
+.ws-copilot-head { flex: none; display: flex; justify-content: space-between; align-items: center; height: 56px; margin: 0; border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
+.ws-copilot-title-group { display: flex; align-items: center; gap: 8px; }
+.ws-copilot-head-sparkle { width: 17px; height: 17px; color: #c084fc; filter: drop-shadow(0 0 6px rgba(192,132,252,0.45)); flex: none; }
+.ws-copilot-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: rgba(237, 242, 255, 0.88); letter-spacing: -0.01em; }
+.ws-copilot-close { width: 32px; height: 32px; padding: 0; border-radius: 8px; border: none; background: transparent; color: rgba(148, 163, 184, 0.52); font-size: 20px; line-height: 1; box-shadow: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .15s ease; }
+.ws-copilot-close:hover { color: #f5f3ff; background: rgba(148, 163, 184, 0.12); transform: none; box-shadow: none; }
+.ws-copilot-resizer { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; z-index: 2; display: flex; align-items: center; justify-content: center; transition: background .15s ease; }
+.ws-copilot-resizer::after { content: ""; width: 2px; height: 28px; border-radius: 999px; background: rgba(148, 163, 184, 0.18); transition: all .15s ease; opacity: 0; }
+.ws-copilot-resizer:hover::after, .ws-workbench.is-resizing .ws-copilot-resizer::after { opacity: 1; height: 42px; background: #a855f7; box-shadow: 0 0 8px rgba(168,85,247,0.6); }
 .ws-copilot-resizer:hover, .ws-workbench.is-resizing .ws-copilot-resizer { background: linear-gradient(90deg, transparent, rgba(168,85,247,.28)); }
 .ws-copilot-resizer[hidden] { display: none; }
 .ws-copilot-mask { display: none; }

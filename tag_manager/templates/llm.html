@@ -2,13 +2,19 @@
 {% block content %}
 <div class="page-head">
   <h1>LLM 设置</h1>
-  <p>兼容入口。日常请从工坊齿轮打开同一份设置；工坊 Copilot 对话已承担辅助分类与提示词建议。</p>
+  <p>兼容入口。日常请从工坊的「AI 提示词助手设置」打开同一份配置；工坊 Copilot 对话已承担辅助分类与提示词建议。</p>
 </div>
 <form class="vertical" method="post" action="/llm/settings">
   <h2>OpenAI 兼容设置</h2>
   <input type="hidden" name="next" value="/llm">
+  <label>启用 AI 提示词助手
+    <select name="copilot_enabled">
+      <option value="1" {% if settings.copilot_enabled %}selected{% endif %}>启用</option>
+      <option value="0" {% if settings and not settings.copilot_enabled %}selected{% endif %}>关闭</option>
+    </select>
+  </label>
   <input type="text" name="base_url" value="{{ settings.base_url }}" placeholder="Base URL，例如 http://127.0.0.1:11434/v1" autocomplete="off">
-  <input type="text" name="api_key" value="{{ settings.api_key }}" placeholder="API Key" autocomplete="off">
+  <input type="password" name="api_key" value="" placeholder="{% if settings.api_key %}已保存，留空则保留原密钥{% else %}未配置{% endif %}" autocomplete="new-password">
   <input type="text" name="model" value="{{ settings.model }}" placeholder="模型名" autocomplete="off">
   <textarea name="default_system_prompt" rows="8" placeholder="可选，作为默认 system prompt">{{ settings.default_system_prompt }}</textarea>
   <button type="submit">保存设置</button>

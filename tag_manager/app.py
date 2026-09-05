@@ -57,7 +57,7 @@ from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, 
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.22.0")
+app = FastAPI(title="夜之主衣柜", version="1.23.0")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
@@ -833,12 +833,19 @@ def save_llm_settings(
     api_key: str = Form(""),
     model: str = Form(""),
     default_system_prompt: str = Form(""),
+    copilot_enabled: str = Form("1"),
     next_path: str = Form("", alias="next"),
 ):
     with connect() as conn:
+        row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+        saved_key = _retain_blank_api_key(_row_value(row, "api_key") or "", api_key)
         conn.execute(
-            "UPDATE llm_settings SET base_url=?, api_key=?, model=?, default_system_prompt=? WHERE id=1",
-            (base_url, api_key, model, default_system_prompt),
+            """
+            UPDATE llm_settings
+            SET base_url=?, api_key=?, model=?, default_system_prompt=?, copilot_enabled=?
+            WHERE id=1
+            """,
+            (base_url, saved_key, model, default_system_prompt, 1 if _truthy(copilot_enabled) else 0),
         )
     return redirect(_safe_local_next(next_path, default="/llm"))
 
@@ -1184,19 +1191,19 @@ def api_workshop_copilot(request_body: dict):
     )
     session = get_session_detail(session["id"], connect_factory=_copilot_connect)["session"]
 
-    with connect() as conn:
-        settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
-    if not settings or not settings["base_url"] or not settings["api_key"] or not settings["model"]:
+    settings = _llm_settings_row()
+    settings_error = _copilot_settings_error(settings)
+    if settings_error:
         err_msg = append_message(
             session["id"],
             "error",
-            build_error_content(message="LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API"),
+            build_error_content(message=settings_error),
             connect_factory=_copilot_connect,
         )
         session = get_session_detail(session["id"], connect_factory=_copilot_connect)["session"]
         return JSONResponse(
             _copilot_error_payload(
-                "LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API",
+                settings_error,
                 session,
                 user_msg,
                 err_msg,
@@ -1210,6 +1217,7 @@ def api_workshop_copilot(request_body: dict):
             base_url=settings["base_url"],
             api_key=settings["api_key"],
             model=settings["model"],
+            extra_system_prompt=settings["default_system_prompt"] or "",
             **({} if use_tools else {"tool_registry": {}}),
         )
     except CopilotError as exc:
@@ -1236,6 +1244,135 @@ def api_workshop_copilot(request_body: dict):
     result["user_message_id"] = user_msg["id"]
     result["assistant_message_id"] = asst["id"]
     return JSONResponse(result)
+
+
+MSG_LLM_UNCONFIGURED = "LLM 未配置，请先在工坊助手设置中填写 API"
+MSG_COPILOT_DISABLED = "AI 提示词助手已关闭，请在设置中启用"
+MSG_NEED_URL_KEY = "请先配置 base_url 和 API Key"
+
+
+def _truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value or "").strip().lower()
+    return text in ("1", "true", "yes", "on")
+
+
+def _row_value(row, key, default=""):
+    if row is None:
+        return default
+    try:
+        value = row[key]
+    except (IndexError, KeyError):
+        return default
+    return default if value is None else value
+
+
+def _llm_settings_row():
+    with connect() as conn:
+        return conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+
+
+def _copilot_enabled(row) -> bool:
+    value = _row_value(row, "copilot_enabled", 1)
+    try:
+        return bool(int(value))
+    except (TypeError, ValueError):
+        return True
+
+
+def _public_llm_settings(row) -> dict:
+    return {
+        "enabled": _copilot_enabled(row),
+        "base_url": str(_row_value(row, "base_url") or ""),
+        "model": str(_row_value(row, "model") or ""),
+        "has_key": bool(_row_value(row, "api_key")),
+        "default_system_prompt": str(_row_value(row, "default_system_prompt") or ""),
+    }
+
+
+def _copilot_settings_error(settings) -> str | None:
+    if not _copilot_enabled(settings):
+        return MSG_COPILOT_DISABLED
+    if not settings or not settings["base_url"] or not settings["api_key"] or not settings["model"]:
+        return MSG_LLM_UNCONFIGURED
+    return None
+
+
+def _retain_blank_api_key(existing, incoming) -> str:
+    """空白或未提供的 api_key 视为未改，保留已保存密钥。"""
+    if incoming is None:
+        return existing or ""
+    text = str(incoming).strip()
+    return text if text else (existing or "")
+
+
+def _save_llm_settings_payload(body: dict) -> dict:
+    body = body if isinstance(body, dict) else {}
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+        base_url = str(body["base_url"]).strip() if "base_url" in body else (_row_value(row, "base_url") or "")
+        model = str(body["model"]).strip() if "model" in body else (_row_value(row, "model") or "")
+        prompt = str(body["default_system_prompt"]) if "default_system_prompt" in body else (_row_value(row, "default_system_prompt") or "")
+        enabled = 1 if _copilot_enabled(row) else 0
+        if "enabled" in body:
+            enabled = 1 if _truthy(body.get("enabled")) else 0
+        incoming_key = body.get("api_key") if "api_key" in body else None
+        api_key = _retain_blank_api_key(_row_value(row, "api_key") or "", incoming_key)
+        conn.execute(
+            """
+            UPDATE llm_settings
+            SET base_url=?, model=?, api_key=?, default_system_prompt=?, copilot_enabled=?
+            WHERE id=1
+            """,
+            (base_url, model, api_key, prompt, enabled),
+        )
+        row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+    return _public_llm_settings(row)
+
+
+@app.get("/api/copilot/settings")
+def api_copilot_settings_get():
+    return JSONResponse(_public_llm_settings(_llm_settings_row()))
+
+
+@app.post("/api/copilot/settings")
+def api_copilot_settings_post(request_body: dict | None = None):
+    settings = _save_llm_settings_payload(request_body or {})
+    return JSONResponse({"ok": True, "settings": settings})
+
+
+@app.get("/api/copilot/models")
+def api_copilot_models():
+    settings = _llm_settings_row()
+    if not settings or not settings["base_url"] or not settings["api_key"]:
+        return JSONResponse({"error": MSG_NEED_URL_KEY}, status_code=400)
+    try:
+        models = list_models(settings["base_url"], settings["api_key"])
+    except Exception as exc:
+        return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"] or "")}, status_code=500)
+    return JSONResponse({"models": models})
+
+
+@app.post("/api/copilot/test")
+def api_copilot_test():
+    settings = _llm_settings_row()
+    error = _copilot_settings_error(settings)
+    if error:
+        return JSONResponse({"error": error}, status_code=400)
+    try:
+        answer = chat_completion_messages(
+            settings["base_url"],
+            settings["api_key"],
+            settings["model"],
+            [{"role": "user", "content": "Hi"}],
+            max_tokens=5,
+        )
+    except Exception as exc:
+        return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"] or "")}, status_code=500)
+    return JSONResponse({"ok": True, "result": answer})
 
 
 @app.get("/api/tags/page")

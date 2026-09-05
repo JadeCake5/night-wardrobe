@@ -123,7 +123,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 base_url TEXT DEFAULT '',
                 api_key TEXT DEFAULT '',
                 model TEXT DEFAULT '',
-                default_system_prompt TEXT DEFAULT ''
+                default_system_prompt TEXT DEFAULT '',
+                copilot_enabled INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS characters (
@@ -299,6 +300,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
         )
         ensure_gallery_image_columns(conn)
         ensure_video_decrypt_job_columns(conn)
+        ensure_llm_settings_columns(conn)
 
 
 def ensure_gallery_image_columns(conn: sqlite3.Connection) -> None:
@@ -324,6 +326,12 @@ def ensure_video_decrypt_job_columns(conn: sqlite3.Connection) -> None:
     for name, definition in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE video_decrypt_jobs ADD COLUMN {name} {definition}")
+
+
+def ensure_llm_settings_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(llm_settings)").fetchall()}
+    if "copilot_enabled" not in existing:
+        conn.execute("ALTER TABLE llm_settings ADD COLUMN copilot_enabled INTEGER NOT NULL DEFAULT 1")
 
 
 def upsert_category(name: str, kind: str = "tag", sort_order: int = 0, notes: str = "") -> None:

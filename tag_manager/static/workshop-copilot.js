@@ -254,6 +254,12 @@
     applyMode();
     mountIsland();
     emitContext();
+    setTimeout(function () {
+      if (els && els.drawer) {
+        var input = els.drawer.querySelector('textarea[data-copilot-input]');
+        if (input && document.activeElement !== input) input.focus();
+      }
+    }, 80);
   }
 
   function closeDrawer() {

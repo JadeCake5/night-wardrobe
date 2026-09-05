@@ -165,12 +165,12 @@ class WorkshopWorkbenchLayoutTests(unittest.TestCase):
         self.assertIn('id="wsCopilotBtn"', tpl)
         self.assertIn("copyBoth()", tpl)
         self.assertIn('aria-label="复制全部"', tpl)
-        # v1.20.1：LLM 设置齿轮入口与 folder-dialog，提交回工坊
+        # v1.23.0：助手设置齿轮入口与 JSON 弹层，提交不再整页刷新
         self.assertIn('id="wsLlmSettingsBtn"', tpl)
-        self.assertIn('aria-label="LLM 设置"', tpl)
+        self.assertIn('aria-label="AI 提示词助手设置"', tpl)
         self.assertIn('class="folder-dialog" id="wsLlmSettingsDialog"', tpl)
-        self.assertIn('action="/llm/settings"', tpl)
-        self.assertIn('name="next" value="/workshop"', tpl)
+        self.assertIn("/api/copilot/settings", tpl)
+        self.assertIn("/static/copilot-settings.js?v=3", tpl)
         # ··· 菜单：重置自定义/重置 Prompt/清除全部（danger）
         self.assertIn('id="wsHeaderMenu"', tpl)
         self.assertIn('data-ws-menu="reset-custom"', tpl)
@@ -245,7 +245,7 @@ class WorkshopWorkbenchLayoutTests(unittest.TestCase):
         tpl = self.tpl
         self.assertIn("__wardrobePageCleanup", tpl)
         self.assertIn("WorkshopCopilot.destroy", tpl)
-        self.assertIn('<script src="/static/workshop-copilot.js?v=76"></script>', tpl)
+        self.assertIn('<script src="/static/workshop-copilot.js?v=77"></script>', tpl)
         self.assertIn("/static/copilot/copilot.js?v=84", tpl)
 
 
@@ -727,8 +727,8 @@ class LlmSettingsEmbedTests(unittest.TestCase):
 
     def testOpenAPI版本与v1操作数(self) -> None:
         schema = app_module.app.openapi()
-        self.assertEqual("1.22.0", app_module.app.version)
-        self.assertEqual("1.22.0", schema["info"]["version"])
+        self.assertEqual("1.23.0", app_module.app.version)
+        self.assertEqual("1.23.0", schema["info"]["version"])
         count = sum(len(v) for key, v in schema["paths"].items() if key.startswith("/api/v1"))
         self.assertEqual(20, count)
 
@@ -740,6 +740,7 @@ class LlmSettingsEmbedTests(unittest.TestCase):
                 "api_key": "test-key",
                 "model": "test-model",
                 "default_system_prompt": "测试 system prompt",
+                "copilot_enabled": "1",
                 "next": "/workshop",
             },
             follow_redirects=False,
@@ -752,6 +753,7 @@ class LlmSettingsEmbedTests(unittest.TestCase):
         self.assertEqual("test-key", row["api_key"])
         self.assertEqual("test-model", row["model"])
         self.assertEqual("测试 system prompt", row["default_system_prompt"])
+        self.assertEqual(1, row["copilot_enabled"])
 
     def test缺省next仍回到兼容页(self) -> None:
         response = self.client.post(
@@ -773,18 +775,19 @@ class LlmSettingsEmbedTests(unittest.TestCase):
                 self.assertEqual(303, response.status_code)
                 self.assertEqual("/llm", response.headers["location"])
 
-    def test工坊页渲染内嵌设置表单(self) -> None:
+    def test工坊页渲染内嵌设置弹层(self) -> None:
         with db.connect(self.db_path) as conn:
             conn.execute(
-                "UPDATE llm_settings SET base_url=?, model=? WHERE id=1",
-                ("http://127.0.0.1:11434/v1", "workshop-model"),
+                "UPDATE llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
+                ("http://127.0.0.1:11434/v1", "workshop-secret", "workshop-model"),
             )
         response = self.client.get("/workshop")
         self.assertEqual(200, response.status_code)
         self.assertIn('id="wsLlmSettingsDialog"', response.text)
-        self.assertIn('name="next" value="/workshop"', response.text)
-        self.assertIn("workshop-model", response.text)
-        self.assertIn("http://127.0.0.1:11434/v1", response.text)
+        self.assertIn("/api/copilot/settings", response.text)
+        self.assertIn('id="wsLlmEnabledBtn"', response.text)
+        self.assertNotIn("workshop-secret", response.text)
+        self.assertNotIn('name="next" value="/workshop"', response.text)
 
     def test兼容页不再暴露对话表单(self) -> None:
         response = self.client.get("/llm")

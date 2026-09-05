@@ -727,8 +727,8 @@ class LlmSettingsEmbedTests(unittest.TestCase):
 
     def testOpenAPI版本与v1操作数(self) -> None:
         schema = app_module.app.openapi()
-        self.assertEqual("1.24.1", app_module.app.version)
-        self.assertEqual("1.24.1", schema["info"]["version"])
+        self.assertEqual("1.24.2", app_module.app.version)
+        self.assertEqual("1.24.2", schema["info"]["version"])
         count = sum(len(v) for key, v in schema["paths"].items() if key.startswith("/api/v1"))
         self.assertEqual(20, count)
 

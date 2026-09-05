@@ -368,7 +368,7 @@ class CopilotEndpointTests(unittest.TestCase):
             response = app_module.api_workshop_copilot(default_request())
         self.assertEqual(400, response.status_code)
         payload = response_json(response)
-        self.assertEqual("LLM 未配置，请先在抽卡设置或衣柜 LLM 页面填写 API", payload["error"])
+        self.assertEqual("LLM 未配置，请先在工坊助手设置中填写 API", payload["error"])
         self.assertTrue(payload.get("session_id"))
 
     def test端点use_tools为false时禁用工具(self) -> None:

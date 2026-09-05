@@ -9,7 +9,7 @@
     <button type="button" id="wsCopilotBtn" class="icon-btn ws-copilot-btn" aria-pressed="false" aria-controls="copilotDrawer" title="AI 助手：打开或收起助手面板" aria-label="AI 助手">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l1.8 4.4L18 10l-4.2 1.6L12 16l-1.8-4.4L6 10l4.2-1.6z"/><path d="M18.5 15.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/></svg>
     </button>
-    <button type="button" id="wsLlmSettingsBtn" class="icon-btn" title="LLM 设置" aria-label="LLM 设置" aria-haspopup="dialog" aria-controls="wsLlmSettingsDialog" onclick="document.getElementById('wsLlmSettingsDialog').showModal()">
+    <button type="button" id="wsLlmSettingsBtn" class="icon-btn" title="AI 提示词助手设置" aria-label="AI 提示词助手设置" aria-haspopup="dialog" aria-controls="wsLlmSettingsDialog" onclick="openCopilotSettingsDialog()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
     </button>
     <button type="button" class="icon-btn" onclick="copyBoth()" title="复制全部" aria-label="复制全部">
@@ -164,8 +164,16 @@
 <aside class="ws-copilot-pane" id="copilotDrawer" aria-label="AI 提示词助手" aria-hidden="true">
   <div class="ws-copilot-resizer" id="copilotResizer" role="separator" aria-orientation="vertical" aria-label="拖动调整助手宽度" title="拖动调整助手宽度" hidden></div>
   <header class="ws-copilot-head">
-    <h2>AI 提示词助手</h2>
-    <button type="button" class="ws-copilot-close" id="copilotClose" title="收起助手面板" aria-label="收起助手面板">×</button>
+    <div class="ws-copilot-title-group">
+      <svg class="ws-copilot-head-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l1.8 4.4L18 10l-4.2 1.6L12 16l-1.8-4.4L6 10l4.2-1.6z"/><path d="M18.5 15.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/></svg>
+      <h2>AI 提示词助手</h2>
+    </div>
+    <div class="ws-copilot-head-actions">
+      <button type="button" id="wsCopilotSettingsBtn" class="icon-btn" title="AI 提示词助手设置" aria-label="AI 提示词助手设置" aria-haspopup="dialog" aria-controls="wsLlmSettingsDialog" onclick="openCopilotSettingsDialog()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
+      </button>
+      <button type="button" class="ws-copilot-close" id="copilotClose" title="收起助手面板" aria-label="收起助手面板">×</button>
+    </div>
   </header>
   <div id="workshop-copilot-root"></div>
 </aside>
@@ -173,35 +181,51 @@
 
 <div class="ws-copilot-mask" id="copilotMask" hidden></div>
 
-<!-- LLM 设置：工坊内嵌，复用既有 /llm/settings -->
+<!-- AI 提示词助手设置：JSON 保存，与抽卡共用 llm_settings -->
 <dialog class="folder-dialog" id="wsLlmSettingsDialog" aria-labelledby="wsLlmSettingsTitle">
-  <form method="post" action="/llm/settings">
+  <div class="folder-dialog-body" data-copilot-settings="1" data-settings-url="/api/copilot/settings" data-models-url="/api/copilot/models" data-test-url="/api/copilot/test">
     <div class="folder-dialog-header">
       <div>
         <span class="folder-dialog-eyebrow">OpenAI 兼容</span>
-        <h2 id="wsLlmSettingsTitle">LLM 设置</h2>
+        <h2 id="wsLlmSettingsTitle">AI 提示词助手设置</h2>
       </div>
       <button type="button" class="folder-dialog-close" onclick="document.getElementById('wsLlmSettingsDialog').close()" aria-label="关闭">×</button>
     </div>
-    <p class="folder-dialog-hint">工坊 Copilot 对话已承担辅助分类与提示词建议。此处只保存连接配置，与抽卡共用同一份服务端设置。</p>
+    <p class="folder-dialog-hint">与抽卡共用同一份服务端 LLM 配置。密钥只保存在服务端，页面不会回读明文；留空 API Key 即保留原密钥。</p>
+    <div id="wsLlmSettingsStatus" class="ws-llm-status" data-state="unknown">
+      <strong id="wsLlmStatusLabel">读取中</strong>
+      <span id="wsLlmStatusHint">正在加载当前配置</span>
+    </div>
+    <div class="ws-llm-toggle">
+      <div>
+        <strong>启用 AI 提示词助手</strong>
+        <span>关闭后工坊助手不再调用模型，已保存的连接配置会保留。</span>
+      </div>
+      <button type="button" id="wsLlmEnabledBtn" class="ws-switch" role="switch" aria-checked="true" aria-label="启用 AI 提示词助手"></button>
+    </div>
     <label class="folder-dialog-field">Base URL
-      <input type="text" name="base_url" value="{{ settings.base_url if settings else '' }}" placeholder="例如 http://127.0.0.1:11434/v1" autocomplete="off">
+      <input type="text" id="wsLlmBaseUrl" name="base_url" placeholder="例如 http://127.0.0.1:11434/v1" autocomplete="off">
     </label>
     <label class="folder-dialog-field">API Key
-      <input type="text" name="api_key" value="{{ settings.api_key if settings else '' }}" placeholder="API Key" autocomplete="off">
+      <input type="password" id="wsLlmApiKey" name="api_key" placeholder="未配置" autocomplete="new-password">
     </label>
     <label class="folder-dialog-field">模型名
-      <input type="text" name="model" value="{{ settings.model if settings else '' }}" placeholder="模型名" autocomplete="off">
+      <div class="ws-llm-model-row">
+        <input type="text" id="wsLlmModel" name="model" placeholder="模型名" autocomplete="off">
+        <button type="button" id="wsLlmFetchModelsBtn" class="btn-sm">拉取模型</button>
+      </div>
+      <div id="wsLlmModelList" class="ws-llm-model-list" hidden></div>
     </label>
     <label class="folder-dialog-field">默认 system prompt
-      <textarea name="default_system_prompt" rows="6" placeholder="可选，作为默认 system prompt">{{ settings.default_system_prompt if settings else '' }}</textarea>
+      <textarea id="wsLlmSystemPrompt" name="default_system_prompt" rows="6" placeholder="可选，会附加到助手系统提示词"></textarea>
     </label>
-    <input type="hidden" name="next" value="/workshop">
+    <p id="wsLlmSettingsError" class="ws-llm-error" hidden></p>
     <div class="folder-dialog-actions">
+      <button type="button" class="btn-sm" id="wsLlmTestBtn">测试连接</button>
       <button type="button" class="btn-sm" onclick="document.getElementById('wsLlmSettingsDialog').close()">关闭</button>
-      <button type="submit">保存设置</button>
+      <button type="button" id="wsLlmSaveBtn">保存设置</button>
     </div>
-  </form>
+  </div>
 </dialog>
 
 <!-- 清除全部二次确认 -->
@@ -224,7 +248,8 @@
 
 <link rel="stylesheet" href="/static/copilot/copilot.css?v=84">
 <script src="/static/copilot/copilot.js?v=84"></script>
-<script src="/static/workshop-copilot.js?v=76"></script>
+<script src="/static/workshop-copilot.js?v=77"></script>
+<script src="/static/copilot-settings.js?v=3"></script>
 <script>
 var charsData = {{ characters|tojson }};
 var recipesData = { artist_mix: [], scene: [], negative: [], params: [] };
@@ -556,18 +581,27 @@ function highlightTag(target, tagText) {
   return false;
 }
 
+function openCopilotSettingsDialog() {
+  if (window.CopilotSettings && window.CopilotSettings.open) {
+    window.CopilotSettings.open();
+    return;
+  }
+  var dialog = document.getElementById('wsLlmSettingsDialog');
+  if (dialog && dialog.showModal) dialog.showModal();
+}
+
 var toastTimer = null;
-function toast(msg) {
+function toast(msg, type) {
   let el = document.querySelector('.ws-toast');
   if (!el) {
     el = document.createElement('div');
-    el.className = 'ws-toast';
     document.body.appendChild(el);
   }
+  el.className = 'ws-toast' + (type ? ' ws-toast-' + type : '');
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+  toastTimer = setTimeout(() => el.classList.remove('show'), type === 'error' ? 2600 : 1600);
 }
 
 function importFromTagLib() {
@@ -762,5 +796,6 @@ if (window.WorkshopCopilot && window.WorkshopCopilot.init) {
     resizer: document.getElementById('copilotResizer'),
   });
 }
+if (window.CopilotSettings && window.CopilotSettings.bind) window.CopilotSettings.bind();
 </script>
 {% endblock %}

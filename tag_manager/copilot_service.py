@@ -177,12 +177,22 @@ class Suggestion(_StrictModel):
     stages: list[Stage] = Field(default_factory=list)
 
 
+def _compose_system_prompt(tools_enabled: bool, extra_system_prompt: str = "") -> str:
+    """结构化系统提示词；用户附加要求只追加，不替换 JSON 契约。"""
+    prompt = SYSTEM_PROMPT + TOOLS_ADDENDUM if tools_enabled else SYSTEM_PROMPT
+    extra = (extra_system_prompt or "").strip()
+    if extra:
+        return f"{prompt}\n\n用户附加要求：\n{extra}"
+    return prompt
+
+
 def generate_suggestion(
     request: dict,
     *,
     base_url: str,
     api_key: str,
     model: str,
+    extra_system_prompt: str = "",
     llm_call=chat_completion_messages,
     llm_tool_call=None,
     tool_registry=None,
@@ -192,11 +202,12 @@ def generate_suggestion(
 
     llm_tool_call 为 None 时延迟绑定 chat_completion_with_tools。
     tool_registry 为 None 时使用 copilot_tools.execute_tool；传 {} 则禁用工具循环。
+    extra_system_prompt 来自 llm_settings.default_system_prompt，仅作附加约束。
     """
     action, context, enabled, instruction, history = _validate_request(request)
     user_content = _build_user_content(action, instruction, context, enabled)
     tools_enabled = tool_registry != {}
-    system_prompt = SYSTEM_PROMPT + TOOLS_ADDENDUM if tools_enabled else SYSTEM_PROMPT
+    system_prompt = _compose_system_prompt(tools_enabled, extra_system_prompt)
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_content})
@@ -220,7 +231,7 @@ def generate_suggestion(
             raise
         except Exception as exc:
             if _is_tools_unsupported(exc):
-                messages[:] = _fallback_messages(history, user_content)
+                messages[:] = _fallback_messages(history, user_content, extra_system_prompt)
                 tool_summaries = []
             else:
                 raise CopilotError(_redact_secret(str(exc), api_key)) from exc
@@ -358,8 +369,8 @@ def _is_tools_unsupported(exc: BaseException) -> bool:
     return any(hint in lower for hint in _UNSUPPORT_HINTS)
 
 
-def _fallback_messages(history: list[dict], user_content: str) -> list[dict]:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+def _fallback_messages(history: list[dict], user_content: str, extra_system_prompt: str = "") -> list[dict]:
+    messages = [{"role": "system", "content": _compose_system_prompt(False, extra_system_prompt)}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_content})
     messages.append({"role": "user", "content": _static_catalog_summary()})

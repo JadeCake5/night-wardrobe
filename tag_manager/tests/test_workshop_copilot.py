@@ -507,21 +507,22 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
     def test侧栏不再包含AI设置入口(self) -> None:
         self.assertNotIn('href="/llm"', self.base)
         self.assertNotIn("AI 设置", self.base)
-        self.assertIn("v1.22.0", self.base)
-        self.assertIn("style.css?v=80", self.base)
+        self.assertIn("v1.23.0", self.base)
+        self.assertIn("style.css?v=82", self.base)
 
     def test工坊header有设置按钮与dialog(self) -> None:
         self.assertIn('id="wsLlmSettingsBtn"', self.tpl)
-        self.assertIn('title="LLM 设置"', self.tpl)
-        self.assertIn('aria-label="LLM 设置"', self.tpl)
+        self.assertIn('title="AI 提示词助手设置"', self.tpl)
+        self.assertIn('aria-label="AI 提示词助手设置"', self.tpl)
         self.assertIn('class="folder-dialog" id="wsLlmSettingsDialog"', self.tpl)
-        self.assertIn("wsLlmSettingsDialog').showModal()", self.tpl)
+        self.assertIn('id="wsCopilotSettingsBtn"', self.tpl)
 
-    def test工坊表单提交到settings并回跳工坊(self) -> None:
-        self.assertIn('action="/llm/settings"', self.tpl)
-        self.assertIn('name="next" value="/workshop"', self.tpl)
+    def test工坊设置走JSON接口(self) -> None:
+        self.assertIn("/api/copilot/settings", self.tpl)
+        self.assertIn("/static/copilot-settings.js?v=3", self.tpl)
         for field in ("base_url", "api_key", "model", "default_system_prompt"):
             self.assertIn(f'name="{field}"', self.tpl)
+        self.assertNotIn('action="/llm/settings"', self.tpl)
         self.assertNotIn('action="/llm/chat"', self.tpl)
 
     def test兼容页去掉对话辅助分类主入口(self) -> None:
@@ -535,7 +536,8 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
         self.assertIn("#wsLlmSettingsDialog textarea", self.style)
         self.assertIn(".folder-dialog textarea", self.style)
         self.assertIn("/static/copilot/copilot.js?v=84", self.tpl)
-        self.assertIn("/static/workshop-copilot.js?v=76", self.tpl)
+        self.assertIn("/static/workshop-copilot.js?v=77", self.tpl)
+        self.assertIn("/static/copilot-settings.js?v=3", self.tpl)
 
 
 if __name__ == "__main__":

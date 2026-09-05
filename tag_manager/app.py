@@ -57,7 +57,7 @@ from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, 
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.23.0")
+app = FastAPI(title="夜之主衣柜", version="1.24.0")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
@@ -1283,6 +1283,29 @@ def _copilot_enabled(row) -> bool:
         return True
 
 
+LLM_DEFAULT_TIMEOUT_MS = 60000
+LLM_DEFAULT_RETRIES = 3
+LLM_TIMEOUT_RANGE_MS = (1000, 600000)
+LLM_RETRIES_RANGE = (0, 10)
+
+
+def _coerce_int(value, default: int, low: int, high: int) -> int:
+    """非法值回退缺省，合法值钳制到范围内。"""
+    try:
+        num = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, num))
+
+
+def _llm_timeout_ms(row) -> int:
+    return _coerce_int(_row_value(row, "timeout", None), LLM_DEFAULT_TIMEOUT_MS, *LLM_TIMEOUT_RANGE_MS)
+
+
+def _llm_retries(row) -> int:
+    return _coerce_int(_row_value(row, "retries", None), LLM_DEFAULT_RETRIES, *LLM_RETRIES_RANGE)
+
+
 def _public_llm_settings(row) -> dict:
     return {
         "enabled": _copilot_enabled(row),
@@ -1290,6 +1313,8 @@ def _public_llm_settings(row) -> dict:
         "model": str(_row_value(row, "model") or ""),
         "has_key": bool(_row_value(row, "api_key")),
         "default_system_prompt": str(_row_value(row, "default_system_prompt") or ""),
+        "timeout": _llm_timeout_ms(row),
+        "retries": _llm_retries(row),
     }
 
 
@@ -1321,13 +1346,19 @@ def _save_llm_settings_payload(body: dict) -> dict:
             enabled = 1 if _truthy(body.get("enabled")) else 0
         incoming_key = body.get("api_key") if "api_key" in body else None
         api_key = _retain_blank_api_key(_row_value(row, "api_key") or "", incoming_key)
+        timeout = _llm_timeout_ms(row)
+        retries = _llm_retries(row)
+        if "timeout" in body:
+            timeout = _coerce_int(body.get("timeout"), timeout, *LLM_TIMEOUT_RANGE_MS)
+        if "retries" in body:
+            retries = _coerce_int(body.get("retries"), retries, *LLM_RETRIES_RANGE)
         conn.execute(
             """
             UPDATE llm_settings
-            SET base_url=?, model=?, api_key=?, default_system_prompt=?, copilot_enabled=?
+            SET base_url=?, model=?, api_key=?, default_system_prompt=?, copilot_enabled=?, timeout=?, retries=?
             WHERE id=1
             """,
-            (base_url, model, api_key, prompt, enabled),
+            (base_url, model, api_key, prompt, enabled, timeout, retries),
         )
         row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
     return _public_llm_settings(row)
@@ -1349,8 +1380,9 @@ def api_copilot_models():
     settings = _llm_settings_row()
     if not settings or not settings["base_url"] or not settings["api_key"]:
         return JSONResponse({"error": MSG_NEED_URL_KEY}, status_code=400)
+    timeout_seconds = max(1, _llm_timeout_ms(settings) // 1000)
     try:
-        models = list_models(settings["base_url"], settings["api_key"])
+        models = list_models(settings["base_url"], settings["api_key"], timeout=timeout_seconds)
     except Exception as exc:
         return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"] or "")}, status_code=500)
     return JSONResponse({"models": models})
@@ -1362,17 +1394,23 @@ def api_copilot_test():
     error = _copilot_settings_error(settings)
     if error:
         return JSONResponse({"error": error}, status_code=400)
-    try:
-        answer = chat_completion_messages(
-            settings["base_url"],
-            settings["api_key"],
-            settings["model"],
-            [{"role": "user", "content": "Hi"}],
-            max_tokens=5,
-        )
-    except Exception as exc:
-        return JSONResponse({"error": _gacha_error_message(exc, settings["api_key"] or "")}, status_code=500)
-    return JSONResponse({"ok": True, "result": answer})
+    timeout_seconds = max(1, _llm_timeout_ms(settings) // 1000)
+    attempts = _llm_retries(settings) + 1
+    last_exc: Exception | None = None
+    for _ in range(attempts):
+        try:
+            answer = chat_completion_messages(
+                settings["base_url"],
+                settings["api_key"],
+                settings["model"],
+                [{"role": "user", "content": "Hi"}],
+                max_tokens=5,
+                timeout=timeout_seconds,
+            )
+            return JSONResponse({"ok": True, "result": answer})
+        except Exception as exc:
+            last_exc = exc
+    return JSONResponse({"error": _gacha_error_message(last_exc, settings["api_key"] or "")}, status_code=500)
 
 
 @app.get("/api/tags/page")

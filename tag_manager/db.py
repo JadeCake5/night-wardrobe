@@ -124,7 +124,9 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 api_key TEXT DEFAULT '',
                 model TEXT DEFAULT '',
                 default_system_prompt TEXT DEFAULT '',
-                copilot_enabled INTEGER NOT NULL DEFAULT 1
+                copilot_enabled INTEGER NOT NULL DEFAULT 1,
+                timeout INTEGER NOT NULL DEFAULT 60000,
+                retries INTEGER NOT NULL DEFAULT 3
             );
 
             CREATE TABLE IF NOT EXISTS characters (
@@ -330,8 +332,14 @@ def ensure_video_decrypt_job_columns(conn: sqlite3.Connection) -> None:
 
 def ensure_llm_settings_columns(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(llm_settings)").fetchall()}
-    if "copilot_enabled" not in existing:
-        conn.execute("ALTER TABLE llm_settings ADD COLUMN copilot_enabled INTEGER NOT NULL DEFAULT 1")
+    columns = {
+        "copilot_enabled": "INTEGER NOT NULL DEFAULT 1",
+        "timeout": "INTEGER NOT NULL DEFAULT 60000",
+        "retries": "INTEGER NOT NULL DEFAULT 3",
+    }
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE llm_settings ADD COLUMN {name} {definition}")
 
 
 def upsert_category(name: str, kind: str = "tag", sort_order: int = 0, notes: str = "") -> None:

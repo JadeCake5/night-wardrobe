@@ -191,7 +191,7 @@
       </div>
       <button type="button" class="folder-dialog-close" onclick="document.getElementById('wsLlmSettingsDialog').close()" aria-label="关闭">×</button>
     </div>
-    <p class="folder-dialog-hint">与抽卡共用同一份服务端 LLM 配置。密钥只保存在服务端，页面不会回读明文；留空 API Key 即保留原密钥。</p>
+    <p class="folder-dialog-hint">与抽卡共用同一份服务端 LLM 配置。按服务商分别记忆 Base URL、模型与 API Key（保存在浏览器 localStorage）；密钥同时只保存在服务端，页面不会回读明文，留空 API Key 即保留原密钥。</p>
     <div id="wsLlmSettingsStatus" class="ws-llm-status" data-state="unknown">
       <strong id="wsLlmStatusLabel">读取中</strong>
       <span id="wsLlmStatusHint">正在加载当前配置</span>
@@ -203,6 +203,13 @@
       </div>
       <button type="button" id="wsLlmEnabledBtn" class="ws-switch" role="switch" aria-checked="true" aria-label="启用 AI 提示词助手"></button>
     </div>
+    <label class="folder-dialog-field">服务商
+      <select id="wsLlmProvider" name="provider">
+        <option value="siliconflow">硅基流动</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="openai">OpenAI 兼容</option>
+      </select>
+    </label>
     <label class="folder-dialog-field">Base URL
       <input type="text" id="wsLlmBaseUrl" name="base_url" placeholder="例如 http://127.0.0.1:11434/v1" autocomplete="off">
     </label>
@@ -216,6 +223,14 @@
       </div>
       <div id="wsLlmModelList" class="ws-llm-model-list" hidden></div>
     </label>
+    <div class="ws-llm-conn-grid">
+      <label class="folder-dialog-field">超时时间（秒）
+        <input type="number" id="wsLlmTimeout" name="timeout" min="5" max="300" step="1" value="60">
+      </label>
+      <label class="folder-dialog-field">重试次数
+        <input type="number" id="wsLlmRetries" name="retries" min="0" max="10" step="1" value="3">
+      </label>
+    </div>
     <label class="folder-dialog-field">默认 system prompt
       <textarea id="wsLlmSystemPrompt" name="default_system_prompt" rows="6" placeholder="可选，会附加到助手系统提示词"></textarea>
     </label>
@@ -249,7 +264,7 @@
 <link rel="stylesheet" href="/static/copilot/copilot.css?v=84">
 <script src="/static/copilot/copilot.js?v=84"></script>
 <script src="/static/workshop-copilot.js?v=77"></script>
-<script src="/static/copilot-settings.js?v=3"></script>
+<script src="/static/copilot-settings.js?v=4"></script>
 <script>
 var charsData = {{ characters|tojson }};
 var recipesData = { artist_mix: [], scene: [], negative: [], params: [] };

@@ -39,6 +39,8 @@ class CopilotSettingsApiTests(unittest.TestCase):
         self.assertFalse(public["has_key"])
         self.assertNotIn("api_key", public)
         self.assertIn("default_system_prompt", public)
+        self.assertEqual(60000, public["timeout"])
+        self.assertEqual(3, public["retries"])
 
     def test保存后可保留旧密钥并写入启用与提示词(self) -> None:
         created = app_module.api_copilot_settings_post({
@@ -158,7 +160,129 @@ class CopilotSettingsApiTests(unittest.TestCase):
         with mock.patch.object(app_module, "list_models", return_value=["a", "b"]) as list_models:
             response = app_module.api_copilot_models()
         self.assertEqual({"models": ["a", "b"]}, response_json(response))
-        list_models.assert_called_once_with("https://example.invalid/v1", "测试密钥")
+        list_models.assert_called_once_with("https://example.invalid/v1", "测试密钥", timeout=60)
+
+    def test超时与重试保存后持久化并回读(self) -> None:
+        created = app_module.api_copilot_settings_post({
+            "base_url": "https://example.invalid/v1",
+            "api_key": "k",
+            "model": "m",
+            "timeout": 120000,
+            "retries": 5,
+        })
+        self.assertEqual(True, response_json(created)["ok"])
+        settings = response_json(created)["settings"]
+        self.assertEqual(120000, settings["timeout"])
+        self.assertEqual(5, settings["retries"])
+        public = response_json(app_module.api_copilot_settings_get())
+        self.assertEqual(120000, public["timeout"])
+        self.assertEqual(5, public["retries"])
+        with db.connect(self.db_path) as conn:
+            row = conn.execute("SELECT timeout, retries FROM llm_settings WHERE id=1").fetchone()
+        self.assertEqual(120000, row["timeout"])
+        self.assertEqual(5, row["retries"])
+
+    def test旧客户端不带新字段不报错且保留旧值(self) -> None:
+        app_module.api_copilot_settings_post({
+            "base_url": "https://example.invalid/v1",
+            "api_key": "k",
+            "model": "m",
+            "timeout": 90000,
+            "retries": 7,
+        })
+        # 模拟旧客户端：只提交老三字段与启用状态，不带 timeout/retries
+        response = app_module.api_copilot_settings_post({
+            "enabled": True,
+            "base_url": "https://old-client.invalid/v1",
+            "api_key": "旧客户端密钥",
+            "model": "old-model",
+            "default_system_prompt": "旧提示词",
+        })
+        self.assertEqual(True, response_json(response)["ok"])
+        public = response_json(app_module.api_copilot_settings_get())
+        self.assertEqual("https://old-client.invalid/v1", public["base_url"])
+        self.assertEqual(90000, public["timeout"])
+        self.assertEqual(7, public["retries"])
+
+    def test非法超时与重试回退旧值并钳制范围(self) -> None:
+        app_module.api_copilot_settings_post({"timeout": 45000, "retries": 2})
+        for bad in ("abc", None, {}):
+            with self.subTest(timeout=repr(bad)):
+                app_module.api_copilot_settings_post({"timeout": bad})
+                self.assertEqual(45000, response_json(app_module.api_copilot_settings_get())["timeout"])
+        app_module.api_copilot_settings_post({"timeout": 0, "retries": 99})
+        public = response_json(app_module.api_copilot_settings_get())
+        self.assertEqual(1000, public["timeout"])
+        self.assertEqual(10, public["retries"])
+        app_module.api_copilot_settings_post({"retries": -3})
+        self.assertEqual(0, response_json(app_module.api_copilot_settings_get())["retries"])
+
+    def test测试连接按配置超时与重试(self) -> None:
+        app_module.api_copilot_settings_post({
+            "base_url": "https://example.invalid/v1",
+            "api_key": "k",
+            "model": "m",
+            "timeout": 30000,
+            "retries": 2,
+        })
+        calls = []
+
+        def flaky(*args, **kwargs):
+            calls.append(kwargs)
+            if len(calls) < 3:
+                raise RuntimeError("网络抖动")
+            return "ok"
+
+        with mock.patch.object(app_module, "chat_completion_messages", side_effect=flaky):
+            response = app_module.api_copilot_test()
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(3, len(calls))
+        for kwargs in calls:
+            self.assertEqual(30, kwargs["timeout"])
+
+    def test测试连接重试耗尽后仍脱敏密钥(self) -> None:
+        app_module.api_copilot_settings_post({
+            "base_url": "https://example.invalid/v1",
+            "api_key": "绝密值",
+            "model": "m",
+            "retries": 1,
+        })
+        with mock.patch.object(app_module, "chat_completion_messages", side_effect=RuntimeError("失败：绝密值")) as call:
+            response = app_module.api_copilot_test()
+        self.assertEqual(500, response.status_code)
+        self.assertEqual(2, call.call_count)
+        self.assertNotIn("绝密值", response.body.decode("utf-8"))
+        self.assertIn("***", response_json(response)["error"])
+
+    def test老库迁移自动补齐超时与重试列(self) -> None:
+        import sqlite3
+
+        legacy_path = Path(self.temp_dir.name) / "legacy-llm.sqlite3"
+        conn = sqlite3.connect(legacy_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE llm_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    base_url TEXT DEFAULT '',
+                    api_key TEXT DEFAULT '',
+                    model TEXT DEFAULT '',
+                    default_system_prompt TEXT DEFAULT ''
+                )
+                """
+            )
+            conn.execute("INSERT INTO llm_settings (id, base_url) VALUES (1, 'https://legacy.invalid/v1')")
+            db.ensure_llm_settings_columns(conn)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(llm_settings)").fetchall()}
+            row = conn.execute("SELECT timeout, retries, copilot_enabled FROM llm_settings WHERE id=1").fetchone()
+        finally:
+            conn.close()
+        self.assertIn("timeout", columns)
+        self.assertIn("retries", columns)
+        self.assertIn("copilot_enabled", columns)
+        self.assertEqual(60000, row[0])
+        self.assertEqual(3, row[1])
+        self.assertEqual(1, row[2])
 
     def test附加提示词会传给助手生成(self) -> None:
         app_module.api_copilot_settings_post({
@@ -219,7 +343,7 @@ class CopilotSettingsPageTests(unittest.TestCase):
         self.assertIn('id="wsLlmSettingsDialog"', response.text)
         self.assertIn('data-copilot-settings="1"', response.text)
         self.assertIn("/api/copilot/settings", response.text)
-        self.assertIn("/static/copilot-settings.js?v=3", response.text)
+        self.assertIn("/static/copilot-settings.js?v=4", response.text)
         self.assertIn('id="wsCopilotSettingsBtn"', response.text)
         self.assertNotIn("super-secret-key", response.text)
         self.assertNotIn('action="/llm/settings"', response.text)
@@ -297,9 +421,12 @@ class CopilotSettingsStaticTests(unittest.TestCase):
     def test页面契约包含启用状态与模型操作(self) -> None:
         for needle in (
             'id="wsLlmEnabledBtn"',
+            'id="wsLlmProvider"',
             'id="wsLlmBaseUrl"',
             'id="wsLlmApiKey"',
             'id="wsLlmModel"',
+            'id="wsLlmTimeout"',
+            'id="wsLlmRetries"',
             'id="wsLlmSystemPrompt"',
             'id="wsLlmTestBtn"',
             'id="wsLlmFetchModelsBtn"',
@@ -309,8 +436,10 @@ class CopilotSettingsStaticTests(unittest.TestCase):
             'openCopilotSettingsDialog()',
         ):
             self.assertIn(needle, self.tpl)
-        self.assertIn("v1.23.0", self.base)
-        self.assertIn("style.css?v=82", self.base)
+        for provider in ("硅基流动", "DeepSeek", "OpenAI 兼容"):
+            self.assertIn(provider, self.tpl)
+        self.assertIn("v1.24.0", self.base)
+        self.assertIn("style.css?v=83", self.base)
 
     def test脚本走JSON接口且不提交表单(self) -> None:
         for needle in ("/api/copilot/settings", "/api/copilot/models", "/api/copilot/test", "助手设置已保存"):
@@ -318,6 +447,30 @@ class CopilotSettingsStaticTests(unittest.TestCase):
         self.assertNotIn("api_key=", self.js)
         self.assertIn(".ws-switch", self.style)
         self.assertIn(".ws-toast-success", self.style)
+
+    def test脚本包含服务商预设与按服务商记忆(self) -> None:
+        for needle in (
+            "API_PROVIDERS",
+            "siliconflow",
+            "deepseek",
+            "openai",
+            "https://api.siliconflow.cn/v1",
+            "https://api.deepseek.com/v1",
+            "https://api.openai.com/v1",
+            "copilot_api_provider",
+            "copilot_api_base_",
+            "copilot_api_model_",
+            "copilot_api_keys",
+            "wsLlmProvider",
+            "wsLlmTimeout",
+            "wsLlmRetries",
+            '"connected"',
+            "AbortController",
+        ):
+            self.assertIn(needle, self.js)
+        self.assertIn("60000", self.js)
+        self.assertIn(".ws-llm-conn-grid", self.style)
+        self.assertIn('[data-state="connected"]', self.style)
 
     def test兼容页模板不回插明文密钥(self) -> None:
         self.assertNotIn("{{ settings.api_key }}", self.llm)

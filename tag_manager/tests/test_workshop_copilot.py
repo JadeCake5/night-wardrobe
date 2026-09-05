@@ -507,8 +507,8 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
     def test侧栏不再包含AI设置入口(self) -> None:
         self.assertNotIn('href="/llm"', self.base)
         self.assertNotIn("AI 设置", self.base)
-        self.assertIn("v1.23.0", self.base)
-        self.assertIn("style.css?v=82", self.base)
+        self.assertIn("v1.24.0", self.base)
+        self.assertIn("style.css?v=83", self.base)
 
     def test工坊header有设置按钮与dialog(self) -> None:
         self.assertIn('id="wsLlmSettingsBtn"', self.tpl)
@@ -519,7 +519,7 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
 
     def test工坊设置走JSON接口(self) -> None:
         self.assertIn("/api/copilot/settings", self.tpl)
-        self.assertIn("/static/copilot-settings.js?v=3", self.tpl)
+        self.assertIn("/static/copilot-settings.js?v=4", self.tpl)
         for field in ("base_url", "api_key", "model", "default_system_prompt"):
             self.assertIn(f'name="{field}"', self.tpl)
         self.assertNotIn('action="/llm/settings"', self.tpl)
@@ -537,7 +537,7 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
         self.assertIn(".folder-dialog textarea", self.style)
         self.assertIn("/static/copilot/copilot.js?v=84", self.tpl)
         self.assertIn("/static/workshop-copilot.js?v=77", self.tpl)
-        self.assertIn("/static/copilot-settings.js?v=3", self.tpl)
+        self.assertIn("/static/copilot-settings.js?v=4", self.tpl)
 
 
 if __name__ == "__main__":

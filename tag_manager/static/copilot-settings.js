@@ -2,7 +2,23 @@
   var SETTINGS_URL = "/api/copilot/settings";
   var MODELS_URL = "/api/copilot/models";
   var TEST_URL = "/api/copilot/test";
-  var state = { enabled: true, hasKey: false, loading: false };
+
+  // 服务商预设：对齐抽卡界 static/gacha/index.html 的 API_PROVIDERS
+  var API_PROVIDERS = {
+    siliconflow: { id: "siliconflow", name: "硅基流动", defaultBaseUrl: "https://api.siliconflow.cn/v1", defaultModel: "Qwen/Qwen2.5-7B-Instruct" },
+    deepseek: { id: "deepseek", name: "DeepSeek", defaultBaseUrl: "https://api.deepseek.com/v1", defaultModel: "deepseek-chat" },
+    openai: { id: "openai", name: "OpenAI 兼容", defaultBaseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini" },
+  };
+  var DEFAULT_TIMEOUT = 60000;
+  var DEFAULT_RETRIES = 3;
+
+  // 按服务商分别记忆的 localStorage 键：风格对齐抽卡 sd_api_base_<provider>，用 copilot 前缀避免冲突
+  var LS_PROVIDER = "copilot_api_provider";
+  var LS_KEYS = "copilot_api_keys";
+  function lsBaseKey(provider) { return "copilot_api_base_" + provider; }
+  function lsModelKey(provider) { return "copilot_api_model_" + provider; }
+
+  var state = { enabled: true, hasKey: false, loading: false, connected: false, provider: "openai" };
   var busyCount = 0;
 
   function readUrls() {
@@ -49,24 +65,74 @@
     });
   }
 
+  function readApiKeys() {
+    try {
+      var saved = global.localStorage && localStorage.getItem(LS_KEYS);
+      var parsed = saved ? JSON.parse(saved) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function writeApiKeys(keys) {
+    try { localStorage.setItem(LS_KEYS, JSON.stringify(keys)); } catch (e) {}
+  }
+
+  // 按服务端 base_url 反推服务商，匹配不到时回退到 OpenAI 兼容
+  function inferProvider(baseUrl) {
+    var url = (baseUrl || "").trim();
+    var ids = Object.keys(API_PROVIDERS);
+    for (var i = 0; i < ids.length; i++) {
+      if (url && url.indexOf(API_PROVIDERS[ids[i]].defaultBaseUrl) === 0) return ids[i];
+    }
+    return "openai";
+  }
+
+  function inputValue(id) {
+    var el = $(id);
+    return el ? el.value.trim() : "";
+  }
+
+  function timeoutMs() {
+    var seconds = parseInt(inputValue("wsLlmTimeout"), 10);
+    if (!seconds || seconds <= 0) return DEFAULT_TIMEOUT;
+    return seconds * 1000;
+  }
+
+  function retriesCount() {
+    var retries = parseInt(inputValue("wsLlmRetries"), 10);
+    if (isNaN(retries) || retries < 0) return DEFAULT_RETRIES;
+    return Math.min(retries, 10);
+  }
+
+  function markDisconnected() {
+    state.connected = false;
+    renderStatus();
+  }
+
   function renderStatus() {
     var box = $("wsLlmSettingsStatus");
     var label = $("wsLlmStatusLabel");
     var hint = $("wsLlmStatusHint");
     if (!box || !label || !hint) return;
-    var baseUrl = ($("wsLlmBaseUrl") && $("wsLlmBaseUrl").value.trim()) || "";
-    var model = ($("wsLlmModel") && $("wsLlmModel").value.trim()) || "";
-    var typedKey = ($("wsLlmApiKey") && $("wsLlmApiKey").value.trim()) || "";
+    var baseUrl = inputValue("wsLlmBaseUrl");
+    var model = inputValue("wsLlmModel");
+    var typedKey = inputValue("wsLlmApiKey");
     var hasKey = state.hasKey || !!typedKey;
     var ready = state.enabled && hasKey && baseUrl && model;
-    var mode = !state.enabled ? "off" : ready ? "ready" : "missing";
+    var mode = !state.enabled ? "off" : state.connected && ready ? "connected" : ready ? "ready" : "missing";
+    var providerName = (API_PROVIDERS[state.provider] || {}).name || "";
     box.dataset.state = mode;
     if (mode === "off") {
       label.textContent = "已关闭";
       hint.textContent = "助手已停用，连接配置仍会保留";
+    } else if (mode === "connected") {
+      label.textContent = "已连接";
+      hint.textContent = providerName + (model ? (" · " + model) : "");
     } else if (mode === "ready") {
       label.textContent = "已配置";
-      hint.textContent = model ? ("当前模型 " + model) : "可以测试连接";
+      hint.textContent = model ? ("当前模型 " + model + "，尚未测试连接") : "可以测试连接";
     } else {
       label.textContent = hasKey ? "未完成" : "未配置";
       hint.textContent = "请填写 Base URL、API Key 和模型后保存";
@@ -80,17 +146,46 @@
     renderStatus();
   }
 
+  // 切换/载入服务商：优先读该服务商的本地记忆，其次用服务端配置（服务商匹配时），最后回退预设默认值
+  function applyProvider(providerId, serverData) {
+    if (!API_PROVIDERS[providerId]) providerId = "openai";
+    state.provider = providerId;
+    try { localStorage.setItem(LS_PROVIDER, providerId); } catch (e) {}
+    var select = $("wsLlmProvider");
+    if (select) select.value = providerId;
+    var preset = API_PROVIDERS[providerId];
+    var url = null;
+    var model = null;
+    try {
+      url = localStorage.getItem(lsBaseKey(providerId));
+      model = localStorage.getItem(lsModelKey(providerId));
+    } catch (e) {}
+    if (url === null && serverData && serverData.base_url && inferProvider(serverData.base_url) === providerId) {
+      url = serverData.base_url;
+      if (model === null) model = serverData.model || preset.defaultModel;
+    }
+    if (url === null || url === "") url = preset.defaultBaseUrl;
+    if (model === null || model === "") model = preset.defaultModel;
+    if ($("wsLlmBaseUrl")) $("wsLlmBaseUrl").value = url;
+    if ($("wsLlmModel")) $("wsLlmModel").value = model;
+    var keyInput = $("wsLlmApiKey");
+    if (keyInput) {
+      var localKey = readApiKeys()[providerId] || "";
+      keyInput.value = localKey;
+      keyInput.placeholder = localKey || state.hasKey ? "已保存，留空则保留原密钥" : "未配置";
+    }
+  }
+
   function applySettings(data) {
     data = data || {};
     state.hasKey = !!data.has_key;
+    state.connected = false;
     setEnabled(data.enabled !== false);
-    if ($("wsLlmBaseUrl")) $("wsLlmBaseUrl").value = data.base_url || "";
-    if ($("wsLlmModel")) $("wsLlmModel").value = data.model || "";
-    if ($("wsLlmSystemPrompt")) $("wsLlmSystemPrompt").value = data.default_system_prompt || "";
-    if ($("wsLlmApiKey")) {
-      $("wsLlmApiKey").value = "";
-      $("wsLlmApiKey").placeholder = state.hasKey ? "已保存，留空则保留原密钥" : "未配置";
-    }
+    if ($("wsLlmTimeout")) $("wsLlmTimeout").value = Math.round((data.timeout || DEFAULT_TIMEOUT) / 1000);
+    if ($("wsLlmRetries")) $("wsLlmRetries").value = data.retries != null ? data.retries : DEFAULT_RETRIES;
+    var savedProvider = null;
+    try { savedProvider = localStorage.getItem(LS_PROVIDER); } catch (e) {}
+    applyProvider(API_PROVIDERS[savedProvider] ? savedProvider : inferProvider(data.base_url), data);
     renderStatus();
   }
 
@@ -100,6 +195,8 @@
       base_url: ($("wsLlmBaseUrl") && $("wsLlmBaseUrl").value) || "",
       model: ($("wsLlmModel") && $("wsLlmModel").value) || "",
       default_system_prompt: ($("wsLlmSystemPrompt") && $("wsLlmSystemPrompt").value) || "",
+      timeout: timeoutMs(),
+      retries: retriesCount(),
     };
     var key = ($("wsLlmApiKey") && $("wsLlmApiKey").value) || "";
     if (includeKey && key.trim()) payload.api_key = key.trim();
@@ -147,7 +244,6 @@
       .then(readJson)
       .then(function (data) {
         applySettings(data.settings || data);
-        if ($("wsLlmApiKey")) $("wsLlmApiKey").value = "";
         if (showToast !== false) notify("助手设置已保存", "success");
         return data;
       })
@@ -164,20 +260,38 @@
     setError("");
     return saveSettings(false)
       .then(function () {
+        // 后端会按重试次数多次尝试，前端中断时间要覆盖全部尝试
+        var controller = new AbortController();
+        var waitMs = timeoutMs() * (retriesCount() + 1) + 5000;
+        var timer = setTimeout(function () { controller.abort(); }, waitMs);
         return fetch(TEST_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: "{}",
-        }).then(readJson);
+          signal: controller.signal,
+        })
+          .then(readJson)
+          .finally(function () { clearTimeout(timer); });
       })
       .then(function () {
+        state.connected = true;
+        renderStatus();
         notify("API 连接成功", "success");
       })
       .catch(function (err) {
-        setError(err.message || "连接失败");
-        notify("连接失败: " + (err.message || "未知错误"), "error");
+        state.connected = false;
+        renderStatus();
+        var message = err && err.name === "AbortError" ? "连接超时" : (err.message || "连接失败");
+        setError(message);
+        notify("连接失败: " + message, "error");
       })
       .finally(function () { setBusy(false); });
+  }
+
+  function setModelValue(name) {
+    if ($("wsLlmModel")) $("wsLlmModel").value = name;
+    try { localStorage.setItem(lsModelKey(state.provider), name); } catch (e) {}
+    markDisconnected();
   }
 
   function renderModels(models) {
@@ -195,11 +309,10 @@
       btn.textContent = name;
       if (name === current) btn.className = "is-active";
       btn.onclick = function () {
-        if ($("wsLlmModel")) $("wsLlmModel").value = name;
+        setModelValue(name);
         Array.prototype.forEach.call(list.querySelectorAll("button"), function (item) {
           item.classList.toggle("is-active", item.textContent === name);
         });
-        renderStatus();
       };
       list.appendChild(btn);
     });
@@ -243,7 +356,37 @@
     if (testBtn) testBtn.onclick = testConnection;
     var fetchBtn = $("wsLlmFetchModelsBtn");
     if (fetchBtn) fetchBtn.onclick = fetchModels;
-    ["wsLlmBaseUrl", "wsLlmModel", "wsLlmApiKey"].forEach(function (id) {
+    var providerSelect = $("wsLlmProvider");
+    if (providerSelect) {
+      providerSelect.onchange = function () {
+        applyProvider(providerSelect.value, null);
+        markDisconnected();
+      };
+    }
+    var baseUrlInput = $("wsLlmBaseUrl");
+    if (baseUrlInput) {
+      baseUrlInput.oninput = function () {
+        try { localStorage.setItem(lsBaseKey(state.provider), baseUrlInput.value); } catch (e) {}
+        markDisconnected();
+      };
+    }
+    var modelInput = $("wsLlmModel");
+    if (modelInput) {
+      modelInput.oninput = function () {
+        try { localStorage.setItem(lsModelKey(state.provider), modelInput.value); } catch (e) {}
+        markDisconnected();
+      };
+    }
+    var keyInput = $("wsLlmApiKey");
+    if (keyInput) {
+      keyInput.oninput = function () {
+        var keys = readApiKeys();
+        keys[state.provider] = keyInput.value;
+        writeApiKeys(keys);
+        markDisconnected();
+      };
+    }
+    ["wsLlmTimeout", "wsLlmRetries"].forEach(function (id) {
       var el = $(id);
       if (el) el.oninput = renderStatus;
     });

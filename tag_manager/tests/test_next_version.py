@@ -170,7 +170,7 @@ class WorkshopWorkbenchLayoutTests(unittest.TestCase):
         self.assertIn('aria-label="AI 提示词助手设置"', tpl)
         self.assertIn('class="folder-dialog" id="wsLlmSettingsDialog"', tpl)
         self.assertIn("/api/copilot/settings", tpl)
-        self.assertIn("/static/copilot-settings.js?v=3", tpl)
+        self.assertIn("/static/copilot-settings.js?v=4", tpl)
         # ··· 菜单：重置自定义/重置 Prompt/清除全部（danger）
         self.assertIn('id="wsHeaderMenu"', tpl)
         self.assertIn('data-ws-menu="reset-custom"', tpl)
@@ -727,8 +727,8 @@ class LlmSettingsEmbedTests(unittest.TestCase):
 
     def testOpenAPI版本与v1操作数(self) -> None:
         schema = app_module.app.openapi()
-        self.assertEqual("1.23.0", app_module.app.version)
-        self.assertEqual("1.23.0", schema["info"]["version"])
+        self.assertEqual("1.24.0", app_module.app.version)
+        self.assertEqual("1.24.0", schema["info"]["version"])
         count = sum(len(v) for key, v in schema["paths"].items() if key.startswith("/api/v1"))
         self.assertEqual(20, count)
 

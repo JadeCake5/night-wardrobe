@@ -436,6 +436,23 @@ class GalleryIncrementalScanTests(unittest.TestCase):
             row = conn_row(self.db_path, "SELECT file_size FROM gallery_images WHERE path = '样本.png'")
             self.assertEqual(len(b"fake-png-v2-longer"), row["file_size"])
 
+    def test解析器版本升级后旧数据重新解析(self) -> None:
+        from tag_manager import gallery
+
+        target = self.gallery_root / "旧图.png"
+        target.write_bytes(b"fake-png")
+        gallery_dir_patch, connect_patch = self.scan_patches()
+        with gallery_dir_patch, connect_patch:
+            self.assertEqual(1, gallery.scan_gallery(self.gallery_root, initialize_db=False))
+            row = conn_row(self.db_path, "SELECT parser_version FROM gallery_images WHERE path = '旧图.png'")
+            self.assertEqual(gallery.PARSER_VERSION, row["parser_version"])
+            # 指纹未变但 parser_version 落后：仍重新解析
+            with db.connect(self.db_path) as conn:
+                conn.execute("UPDATE gallery_images SET parser_version = 0 WHERE path = '旧图.png'")
+            self.assertEqual(1, gallery.scan_gallery(self.gallery_root, initialize_db=False))
+            row = conn_row(self.db_path, "SELECT parser_version FROM gallery_images WHERE path = '旧图.png'")
+            self.assertEqual(gallery.PARSER_VERSION, row["parser_version"])
+
     def test定向入库只处理给定文件(self) -> None:
         from tag_manager import gallery
 

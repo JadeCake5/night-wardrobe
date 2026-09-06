@@ -129,6 +129,14 @@ class WorkshopCopilotContractTests(unittest.TestCase):
         self.assertIn("editedTrack[type] = preEditTrack", self.tpl)
         self.assertIn("sessionStorage.removeItem(editedKey(type))", self.tpl)
 
+    def test表单状态恢复兜底(self) -> None:
+        restore_body = self.tpl.split("function restoreWorkshopState() {", 1)[1].split("['positive', 'negative'].forEach", 1)[0]
+        self.assertIn("|| ''", restore_body)
+        self.assertNotIn("if (saved)", restore_body)
+        self.assertIn("window.addEventListener('load', restoreWorkshopState, { once: true })", self.tpl)
+        self.assertIn("document.getElementById('ws-outfit').value = sessionStorage.getItem('_persist_ws-outfit') || ''", restore_body)
+        self.assertTrue(restore_body.find("onCharChange()") < restore_body.find("sessionStorage.getItem('_persist_ws-outfit')"))
+
 class WorkshopCopilotConversationTests(unittest.TestCase):
     """对话式契约改由 Island 源码钉住；壳只保留 composer 无 id 与 IME 守卫。"""
 
@@ -513,7 +521,7 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
     def test侧栏不再包含AI设置入口(self) -> None:
         self.assertNotIn('href="/llm"', self.base)
         self.assertNotIn("AI 设置", self.base)
-        self.assertIn("v1.24.12", self.base)
+        self.assertIn("v1.24.13", self.base)
         self.assertIn("style.css?v=92", self.base)
 
     def test工坊header有设置按钮与dialog(self) -> None:

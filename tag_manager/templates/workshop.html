@@ -703,23 +703,19 @@ function saveCustomOpen() {
 }
 
 function restoreWorkshopState() {
+  // 始终显式回写控件状态，缺失时置空，以压过浏览器自带的表单状态恢复
   ['ws-char','ws-outfit','ws-artist','ws-scene','ws-negative'].forEach(id => {
-    const saved = sessionStorage.getItem('_persist_' + id);
-    if (saved) {
-      const el = document.getElementById(id);
-      if (el) { el.value = saved; }
-    }
+    const el = document.getElementById(id);
+    if (el) { el.value = sessionStorage.getItem('_persist_' + id) || ''; }
   });
   const charVal = document.getElementById('ws-char').value;
   if (charVal) {
     onCharChange();
-    // onCharChange 重建了服装选项，恢复保存在其后
-    const savedOutfit = sessionStorage.getItem('_persist_ws-outfit');
-    if (savedOutfit) document.getElementById('ws-outfit').value = savedOutfit;
+    // onCharChange 重建了服装选项，必须在其后再次回写服装以压过浏览器表单恢复
+    document.getElementById('ws-outfit').value = sessionStorage.getItem('_persist_ws-outfit') || '';
   }
   ['ws-custom-pos','ws-custom-neg'].forEach(id => {
-    const saved = sessionStorage.getItem('_persist_' + id);
-    if (saved) document.getElementById(id).value = saved;
+    document.getElementById(id).value = sessionStorage.getItem('_persist_' + id) || '';
   });
   ['positive', 'negative'].forEach(type => {
     const raw = sessionStorage.getItem(editedKey(type));
@@ -853,6 +849,8 @@ window.__wardrobePageCleanup = function () {
 };
 
 restoreWorkshopState();
+// 页面加载完成后二次执行，确保浏览器表单状态恢复后再次套用应用状态
+window.addEventListener('load', restoreWorkshopState, { once: true });
 if (window.WorkshopCopilot && window.WorkshopCopilot.init) {
   window.WorkshopCopilot.init({
     workbench: document.getElementById('wsWorkbench'),

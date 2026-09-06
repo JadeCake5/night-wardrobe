@@ -119,6 +119,18 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
+            
+            CREATE TABLE IF NOT EXISTS copilot_llm_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                base_url TEXT DEFAULT '',
+                api_key TEXT DEFAULT '',
+                model TEXT DEFAULT '',
+                default_system_prompt TEXT DEFAULT '',
+                copilot_enabled INTEGER NOT NULL DEFAULT 1,
+                timeout INTEGER NOT NULL DEFAULT 60000,
+                retries INTEGER NOT NULL DEFAULT 3
+            );
+
             CREATE TABLE IF NOT EXISTS llm_settings (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 base_url TEXT DEFAULT '',
@@ -301,9 +313,40 @@ def init_db(db_path: Path = DB_PATH) -> None:
             """,
             (DEFAULT_SYSTEM_PROMPT,),
         )
+        # 老用户迁移兼容：如果 copilot_llm_settings 为空，则从现有的 llm_settings 拷贝作为种子数据（仅首次）
+        row_copilot = conn.execute("SELECT id FROM copilot_llm_settings WHERE id=1").fetchone()
+        if not row_copilot:
+            old_settings = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+            if old_settings:
+                conn.execute(
+                    """
+                    INSERT INTO copilot_llm_settings (id, base_url, api_key, model, default_system_prompt, copilot_enabled, timeout, retries)
+                    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        old_settings["base_url"],
+                        old_settings["api_key"],
+                        old_settings["model"],
+                        old_settings["default_system_prompt"],
+                        old_settings["copilot_enabled"],
+                        old_settings["timeout"] if "timeout" in old_settings.keys() else 60000,
+                        old_settings["retries"] if "retries" in old_settings.keys() else 3
+                    )
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO copilot_llm_settings
+                        (id, base_url, api_key, model, default_system_prompt)
+                    VALUES (1, '', '', '', ?)
+                    """,
+                    (DEFAULT_SYSTEM_PROMPT,),
+                )
+
         ensure_gallery_image_columns(conn)
         ensure_video_decrypt_job_columns(conn)
         ensure_llm_settings_columns(conn)
+        ensure_copilot_llm_settings_columns(conn)
 
 
 def ensure_gallery_image_columns(conn: sqlite3.Connection) -> None:
@@ -331,6 +374,18 @@ def ensure_video_decrypt_job_columns(conn: sqlite3.Connection) -> None:
         if name not in existing:
             conn.execute(f"ALTER TABLE video_decrypt_jobs ADD COLUMN {name} {definition}")
 
+
+
+def ensure_copilot_llm_settings_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(copilot_llm_settings)").fetchall()}
+    columns = {
+        "copilot_enabled": "INTEGER NOT NULL DEFAULT 1",
+        "timeout": "INTEGER NOT NULL DEFAULT 60000",
+        "retries": "INTEGER NOT NULL DEFAULT 3",
+    }
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE copilot_llm_settings ADD COLUMN {name} {definition}")
 
 def ensure_llm_settings_columns(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(llm_settings)").fetchall()}

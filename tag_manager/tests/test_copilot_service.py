@@ -374,7 +374,7 @@ class CopilotEndpointTests(unittest.TestCase):
     def test端点use_tools为false时禁用工具(self) -> None:
         with db.connect(self.db_path) as conn:
             conn.execute(
-                "UPDATE llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
+                "UPDATE copilot_llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
                 ("https://example.invalid/v1", "test-key", "test-model"),
             )
         captured = {}

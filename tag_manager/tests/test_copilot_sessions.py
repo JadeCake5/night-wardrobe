@@ -460,7 +460,7 @@ class CopilotSessionApiTests(unittest.TestCase):
     def test_copilot请求带session_id并落库成功(self) -> None:
         with db.connect(self.db_path) as conn:
             conn.execute(
-                "UPDATE llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
+                "UPDATE copilot_llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
                 ("https://example.invalid/v1", "test-key", "test-model"),
             )
         created = self.client.post("/api/workshop/copilot/sessions", json={}).json()
@@ -508,7 +508,7 @@ class CopilotSessionApiTests(unittest.TestCase):
     def test_ai错误也落库error消息(self) -> None:
         with db.connect(self.db_path) as conn:
             conn.execute(
-                "UPDATE llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
+                "UPDATE copilot_llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
                 ("https://example.invalid/v1", "test-key", "test-model"),
             )
         created = self.client.post("/api/workshop/copilot/sessions", json={}).json()
@@ -529,7 +529,7 @@ class CopilotSessionApiTests(unittest.TestCase):
     def test无效session_id不破坏(self) -> None:
         with db.connect(self.db_path) as conn:
             conn.execute(
-                "UPDATE llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
+                "UPDATE copilot_llm_settings SET base_url=?, api_key=?, model=? WHERE id=1",
                 ("https://example.invalid/v1", "test-key", "test-model"),
             )
         body = default_request()

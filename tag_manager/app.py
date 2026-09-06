@@ -57,7 +57,7 @@ from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, 
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.24.9")
+app = FastAPI(title="夜之主衣柜", version="1.24.10")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
@@ -1272,7 +1272,7 @@ def _row_value(row, key, default=""):
 
 def _llm_settings_row():
     with connect() as conn:
-        return conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+        return conn.execute("SELECT * FROM copilot_llm_settings WHERE id=1").fetchone()
 
 
 def _copilot_enabled(row) -> bool:
@@ -1337,7 +1337,7 @@ def _retain_blank_api_key(existing, incoming) -> str:
 def _save_llm_settings_payload(body: dict) -> dict:
     body = body if isinstance(body, dict) else {}
     with connect() as conn:
-        row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+        row = conn.execute("SELECT * FROM copilot_llm_settings WHERE id=1").fetchone()
         base_url = str(body["base_url"]).strip() if "base_url" in body else (_row_value(row, "base_url") or "")
         model = str(body["model"]).strip() if "model" in body else (_row_value(row, "model") or "")
         prompt = str(body["default_system_prompt"]) if "default_system_prompt" in body else (_row_value(row, "default_system_prompt") or "")
@@ -1354,13 +1354,13 @@ def _save_llm_settings_payload(body: dict) -> dict:
             retries = _coerce_int(body.get("retries"), retries, *LLM_RETRIES_RANGE)
         conn.execute(
             """
-            UPDATE llm_settings
+            UPDATE copilot_llm_settings
             SET base_url=?, model=?, api_key=?, default_system_prompt=?, copilot_enabled=?, timeout=?, retries=?
             WHERE id=1
             """,
             (base_url, model, api_key, prompt, enabled, timeout, retries),
         )
-        row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+        row = conn.execute("SELECT * FROM copilot_llm_settings WHERE id=1").fetchone()
     return _public_llm_settings(row)
 
 

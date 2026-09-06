@@ -18,7 +18,7 @@ def response_json(response) -> dict:
 
 
 class CopilotSettingsApiTests(unittest.TestCase):
-    """AI 提示词助手设置：复用 llm_settings，契约对齐抽卡。"""
+    """AI 提示词助手设置：复用 copilot_llm_settings，契约对齐抽卡。"""
 
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -65,7 +65,7 @@ class CopilotSettingsApiTests(unittest.TestCase):
             "default_system_prompt": "追加构图",
         })
         with db.connect(self.db_path) as conn:
-            row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+            row = conn.execute("SELECT * FROM copilot_llm_settings WHERE id=1").fetchone()
         self.assertEqual("测试密钥", row["api_key"])
         self.assertEqual("new-model", row["model"])
         self.assertEqual(0, row["copilot_enabled"])
@@ -88,7 +88,7 @@ class CopilotSettingsApiTests(unittest.TestCase):
                     "model": "kept-model",
                 })
                 with db.connect(self.db_path) as conn:
-                    row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+                    row = conn.execute("SELECT * FROM copilot_llm_settings WHERE id=1").fetchone()
                 self.assertEqual("测试密钥", row["api_key"])
                 self.assertEqual("https://keep.invalid/v1", row["base_url"])
                 self.assertEqual("kept-model", row["model"])
@@ -98,25 +98,25 @@ class CopilotSettingsApiTests(unittest.TestCase):
 
         app_module.api_copilot_settings_post({"api_key": None, "model": "null-model"})
         with db.connect(self.db_path) as conn:
-            row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+            row = conn.execute("SELECT * FROM copilot_llm_settings WHERE id=1").fetchone()
         self.assertEqual("测试密钥", row["api_key"])
         self.assertEqual("null-model", row["model"])
 
         app_module.api_copilot_settings_post({"api_key": "  新密钥  "})
         with db.connect(self.db_path) as conn:
-            row = conn.execute("SELECT * FROM llm_settings WHERE id=1").fetchone()
+            row = conn.execute("SELECT * FROM copilot_llm_settings WHERE id=1").fetchone()
         self.assertEqual("新密钥", row["api_key"])
 
-    def test与抽卡共用同一行配置(self) -> None:
+    def test与抽卡配置完全独置(self) -> None:
         app_module.api_gacha_settings_post({
             "base_url": "https://gacha.invalid/v1",
             "api_key": "抽卡密钥",
             "model": "gacha-model",
         })
         public = response_json(app_module.api_copilot_settings_get())
-        self.assertEqual("https://gacha.invalid/v1", public["base_url"])
-        self.assertEqual("gacha-model", public["model"])
-        self.assertTrue(public["has_key"])
+        self.assertEqual("", public["base_url"])
+        self.assertEqual("", public["model"])
+        self.assertFalse(public["has_key"])
 
     def test关闭后助手端点返回400且不调用模型(self) -> None:
         app_module.api_copilot_settings_post({
@@ -178,7 +178,7 @@ class CopilotSettingsApiTests(unittest.TestCase):
         self.assertEqual(120000, public["timeout"])
         self.assertEqual(5, public["retries"])
         with db.connect(self.db_path) as conn:
-            row = conn.execute("SELECT timeout, retries FROM llm_settings WHERE id=1").fetchone()
+            row = conn.execute("SELECT timeout, retries FROM copilot_llm_settings WHERE id=1").fetchone()
         self.assertEqual(120000, row["timeout"])
         self.assertEqual(5, row["retries"])
 
@@ -262,7 +262,7 @@ class CopilotSettingsApiTests(unittest.TestCase):
         try:
             conn.execute(
                 """
-                CREATE TABLE llm_settings (
+                CREATE TABLE copilot_llm_settings (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     base_url TEXT DEFAULT '',
                     api_key TEXT DEFAULT '',
@@ -271,10 +271,10 @@ class CopilotSettingsApiTests(unittest.TestCase):
                 )
                 """
             )
-            conn.execute("INSERT INTO llm_settings (id, base_url) VALUES (1, 'https://legacy.invalid/v1')")
-            db.ensure_llm_settings_columns(conn)
-            columns = {row[1] for row in conn.execute("PRAGMA table_info(llm_settings)").fetchall()}
-            row = conn.execute("SELECT timeout, retries, copilot_enabled FROM llm_settings WHERE id=1").fetchone()
+            conn.execute("INSERT INTO copilot_llm_settings (id, base_url) VALUES (1, 'https://legacy.invalid/v1')")
+            db.ensure_copilot_llm_settings_columns(conn)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(copilot_llm_settings)").fetchall()}
+            row = conn.execute("SELECT timeout, retries, copilot_enabled FROM copilot_llm_settings WHERE id=1").fetchone()
         finally:
             conn.close()
         self.assertIn("timeout", columns)

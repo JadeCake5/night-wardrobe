@@ -466,7 +466,23 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 @media (max-width: 980px) { .workflow-hero { display: block; } }
 
 /* ─── 视频解密 ─── */
-.video-decrypt-page { display: grid; gap: 24px; max-width: 1100px; margin: 0 auto; }
+.video-decrypt-page { display: grid; gap: 24px; max-width: 1360px; margin: 0 auto; }
+@media (min-width: 1360px) {
+  body:not(.tag-drawer-expanded) .video-decrypt-page {
+    grid-template-columns: minmax(350px, 4.5fr) minmax(0, 7.5fr);
+    grid-template-areas:
+      "hero hero"
+      "notice notice"
+      "warning warning"
+      "upload jobs";
+    align-items: start;
+  }
+  body:not(.tag-drawer-expanded) .video-decrypt-hero { grid-area: hero; }
+  body:not(.tag-drawer-expanded) .video-decrypt-page > p.notice { grid-area: notice; }
+  body:not(.tag-drawer-expanded) .video-decrypt-warning { grid-area: warning; }
+  body:not(.tag-drawer-expanded) .video-decrypt-upload { grid-area: upload; position: sticky; top: 24px; align-self: start; }
+  body:not(.tag-drawer-expanded) .video-jobs { grid-area: jobs; }
+}
 .video-decrypt-hero { display: flex; justify-content: space-between; gap: 24px; align-items: stretch; padding: 32px; border: 1px solid var(--line); border-radius: 28px; background: radial-gradient(circle at 10% 10%, rgba(168,85,247,.15), transparent 32%), linear-gradient(135deg, rgba(15,23,42,.9), rgba(10,17,34,.78)); box-shadow: var(--glow); transition: transform .2s ease; }
 .video-decrypt-hero:hover { transform: translateY(-2px); }
 .video-decrypt-hero h1 { margin: 8px 0 12px; font-size: 34px; text-shadow: 0 0 22px rgba(168,85,247,.25); }
@@ -477,8 +493,13 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .runtime-card.is-ready { border-color: rgba(74,222,128,.34); background: rgba(20,83,45,.2); color: #bbf7d0; box-shadow: inset 0 0 18px rgba(74,222,128,.05); }
 .runtime-card.is-error { border-color: rgba(248,113,113,.4); background: rgba(127,29,29,.22); color: #fecaca; box-shadow: inset 0 0 18px rgba(248,113,113,.05); }
 .runtime-card span, .runtime-card small { color: inherit; opacity: .82; font-size: 12px; }
-.video-decrypt-warning { display: flex; gap: 12px; align-items: flex-start; padding: 14px 18px; border: 1px solid rgba(251,191,36,.28); border-radius: 16px; background: rgba(120,53,15,.16); color: #fde68a; line-height: 1.55; box-shadow: 0 8px 20px rgba(0,0,0,.12); }
-.video-decrypt-warning strong { flex: 0 0 auto; color: #fcd34d; font-weight: 700; }
+.video-decrypt-warning { padding: 14px 18px; border: 1px solid rgba(251,191,36,.28); border-radius: 16px; background: rgba(120,53,15,.16); color: #fde68a; line-height: 1.55; box-shadow: 0 8px 20px rgba(0,0,0,.12); }
+.video-decrypt-warning summary { display: flex; align-items: center; cursor: pointer; outline: none; }
+.video-decrypt-warning summary::-webkit-details-marker { display: none; }
+.video-decrypt-warning summary::before { content: "▸"; font-size: 14px; color: #fcd34d; transition: transform 0.2s; margin-right: 8px; }
+.video-decrypt-warning[open] summary::before { transform: rotate(90deg); }
+.video-decrypt-warning summary strong { color: #fcd34d; font-weight: 700; margin-right: 8px; }
+.video-decrypt-warning span { display: block; margin-top: 10px; margin-left: 20px; color: rgba(253,230,138,.85); }
 .panel-card { padding: 24px; border: 1px solid var(--line); border-radius: 24px; background: var(--panel); box-shadow: 0 16px 40px rgba(0,0,0,.22); backdrop-filter: blur(14px); }
 .section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
 .section-heading h2 { margin: 0 0 6px; font-size: 22px; color: #f3edf7; }
@@ -514,7 +535,7 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .video-job p, .video-job small { margin: 0; color: var(--muted); overflow-wrap: anywhere; font-size: 13px; }
 .video-job-state { display: inline-flex; align-items: center; gap: 8px; color: #cbd5e1; font-size: 12px; font-weight: 600; letter-spacing: .02em; padding: 4px 8px; border-radius: 8px; background: rgba(15,23,42,.8); width: max-content; margin-bottom: 4px; }
 .video-job-state i { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
-.video-job-progress { display: grid; gap: 6px; margin: 8px 0 6px; max-width: 400px; }
+.video-job-progress { display: grid; gap: 6px; margin: 8px 0 6px; width: 100%; }
 .video-job-progress-row { display: flex; align-items: center; gap: 10px; }
 .video-job-progress-track { flex: 1; min-width: 0; height: 8px; overflow: hidden; border-radius: 999px; background: rgba(15,23,42,.9); box-shadow: inset 0 1px 3px rgba(0,0,0,.2); }
 .video-job-progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan), var(--accent)); transition: width .3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(168,85,247,.3); }
@@ -529,12 +550,12 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .video-job-error strong { display: block; margin-bottom: 4px; color: #f87171; font-size: 14px; }
 .video-job-error small { display: block; margin-top: 6px; color: rgba(252,165,165,.8); font-size: 12px; }
 .video-job-actions { display: flex; gap: 10px; align-items: center; flex: 0 0 auto; }
-.video-download-button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid rgba(74,222,128,.4); border-radius: 12px; background: rgba(20,83,45,.3); color: #bbf7d0; font-size: 13px; font-weight: 600; text-decoration: none; transition: all .2s ease; box-shadow: 0 4px 12px rgba(20,83,45,.2); }
-.video-download-button:hover { background: rgba(20,83,45,.6); border-color: rgba(74,222,128,.7); color: #fff; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(20,83,45,.3); }
-.video-delete-button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid rgba(248,113,113,.35); border-radius: 12px; background: rgba(127,29,29,.2); color: #fecaca; font-size: 13px; font-weight: 600; transition: all .2s ease; box-shadow: none; }
-.video-delete-button:hover { background: rgba(127,29,29,.5); border-color: rgba(248,113,113,.6); color: #fff; transform: translateY(-1px); }
-.video-retry-button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid rgba(56,189,248,.5); border-radius: 12px; background: rgba(8,145,178,.25); color: #a5f3fc; font-size: 13px; font-weight: 600; transition: all .2s ease; box-shadow: none; }
-.video-retry-button:hover { background: rgba(8,145,178,.5); border-color: rgba(56,189,248,.8); color: #fff; transform: translateY(-1px); }
+.video-download-button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid rgba(74,222,128,.6); border-radius: 12px; background: rgba(22,101,52,.9); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; transition: all .2s ease; box-shadow: 0 4px 12px rgba(20,83,45,.4); }
+.video-download-button:hover { background: #15803d; border-color: rgba(74,222,128,.9); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(20,83,45,.6); }
+.video-delete-button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: #fca5a5; font-size: 13px; font-weight: 600; transition: all .2s ease; box-shadow: none; }
+.video-delete-button:hover { background: rgba(127,29,29,.25); border-color: rgba(248,113,113,.35); color: #fecaca; transform: translateY(-1px); }
+.video-retry-button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: #7dd3fc; font-size: 13px; font-weight: 600; transition: all .2s ease; box-shadow: none; }
+.video-retry-button:hover { background: rgba(8,145,178,.25); border-color: rgba(56,189,248,.35); color: #bae6fd; transform: translateY(-1px); }
 .video-file-drop.is-dragover { border-color: #38bdf8; background: rgba(14,116,144,.2); box-shadow: 0 0 0 4px rgba(56,189,248,.15); transform: scale(1.02); }
 .video-password-wrap { position: relative; display: block; }
 .video-password-wrap input { width: 100%; padding-right: 44px; box-sizing: border-box; transition: border-color .2s, box-shadow .2s; }

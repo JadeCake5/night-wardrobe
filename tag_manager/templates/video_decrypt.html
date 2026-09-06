@@ -32,10 +32,10 @@
 
   {% if message %}<p class="notice notice-{{ message_type or 'info' }}">{{ message }}</p>{% endif %}
 
-  <div class="video-decrypt-warning">
-    <strong>使用边界</strong>
-    <span>密文使用 Scrypt 派生密钥与 AES-256-GCM 认证加密；密码错误或文件被篡改时不会保留输出。解密后会自动整理 MP4 索引，Windows 播放器可识别总时长和拖动进度。</span>
-  </div>
+  <details class="video-decrypt-warning">
+    <summary><strong>使用边界</strong>密码错误或文件被篡改时不会保留输出</summary>
+    <span>密文使用 Scrypt 派生密钥与 AES-256-GCM 认证加密。解密后会自动整理 MP4 索引，Windows 播放器可识别总时长和拖动进度。</span>
+  </details>
 
   <section class="video-decrypt-upload panel-card">
     <div class="section-heading">
@@ -581,7 +581,14 @@
         return;
       }
       const pick = event.target.closest('[data-video-pick-file]');
-      if (pick && fileInput && !fileInput.disabled) fileInput.click();
+      if (pick && fileInput && !fileInput.disabled) {
+        fileInput.click();
+        const dropZone = document.querySelector('[data-video-drop]');
+        if (dropZone) {
+          dropZone.classList.add('is-dragover');
+          window.setTimeout(() => dropZone.classList.remove('is-dragover'), 600);
+        }
+      }
     });
   }
 

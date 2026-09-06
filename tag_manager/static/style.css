@@ -1158,3 +1158,231 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
   transform: rotate(180deg);
   color: #f5f3ff;
 }
+
+/* Copilot Settings Drawer */
+.copilot-settings-drawer {
+  margin: 0;
+  margin-left: auto;
+  height: 100dvh;
+  max-height: 100dvh;
+  width: 100%;
+  max-width: 384px;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e2e8f0;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  padding: 0;
+  box-shadow: -20px 0 40px rgba(0, 0, 0, 0.5);
+}
+
+.copilot-settings-drawer::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.copilot-settings-drawer[open] {
+  animation: drawerSlideIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.copilot-settings-drawer[open]::backdrop {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes drawerSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.drawer-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  flex-shrink: 0;
+}
+
+.drawer-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drawer-header .icon {
+  width: 20px;
+  height: 20px;
+  color: #f472b6; /* pink-400 equivalent */
+}
+
+.drawer-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  color: #94a3b8;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+.drawer-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.drawer-card {
+  padding: 16px;
+  background: rgba(2, 6, 23, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drawer-section h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.drawer-section h3 .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.drawer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.drawer-field input[type="text"],
+.drawer-field input[type="password"],
+.drawer-field input[type="number"],
+.drawer-field select,
+.drawer-field textarea {
+  width: 100%;
+  background: #020617; /* slate-950 */
+  border: 1px solid #334155; /* slate-700 */
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #e2e8f0;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.drawer-field textarea {
+  min-height: 80px;
+}
+
+.drawer-field input:focus,
+.drawer-field select:focus,
+.drawer-field textarea:focus {
+  border-color: #a855f7;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+}
+
+.drawer-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.95);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drawer-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.drawer-btn-primary, .drawer-btn-secondary {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.drawer-btn-primary {
+  background: #a855f7;
+  color: #fff;
+}
+.drawer-btn-primary:hover:not(:disabled) {
+  background: #9333ea;
+}
+
+.drawer-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}
+.drawer-btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.drawer-btn-primary:disabled, .drawer-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Specific elements overridden to match new drawer */
+.ws-llm-model-row .drawer-btn-secondary {
+  flex: 0 0 auto;
+  padding: 0 12px;
+  height: 35px;
+}
+.drawer-hint {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 0;
+}

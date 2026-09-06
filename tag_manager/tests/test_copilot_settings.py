@@ -343,7 +343,7 @@ class CopilotSettingsPageTests(unittest.TestCase):
         self.assertIn('id="wsLlmSettingsDialog"', response.text)
         self.assertIn('data-copilot-settings="1"', response.text)
         self.assertIn("/api/copilot/settings", response.text)
-        self.assertIn("/static/copilot-settings.js?v=4", response.text)
+        self.assertIn("/static/copilot-settings.js?v=5", response.text)
         self.assertIn('id="wsCopilotSettingsBtn"', response.text)
         self.assertNotIn("super-secret-key", response.text)
         self.assertNotIn('action="/llm/settings"', response.text)
@@ -438,8 +438,8 @@ class CopilotSettingsStaticTests(unittest.TestCase):
             self.assertIn(needle, self.tpl)
         for provider in ("硅基流动", "DeepSeek", "OpenAI 兼容"):
             self.assertIn(provider, self.tpl)
-        self.assertIn("v1.24.7", self.base)
-        self.assertIn("style.css?v=90", self.base)
+        self.assertIn("v1.24.8", self.base)
+        self.assertIn("style.css?v=91", self.base)
 
     def test脚本走JSON接口且不提交表单(self) -> None:
         for needle in ("/api/copilot/settings", "/api/copilot/models", "/api/copilot/test", "助手设置已保存"):

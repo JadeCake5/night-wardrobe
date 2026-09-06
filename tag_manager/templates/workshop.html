@@ -201,66 +201,79 @@
 <div class="ws-copilot-mask" id="copilotMask" hidden></div>
 
 <!-- AI 提示词助手设置：JSON 保存，与抽卡共用 llm_settings -->
-<dialog class="folder-dialog" id="wsLlmSettingsDialog" aria-labelledby="wsLlmSettingsTitle">
-  <div class="folder-dialog-body" data-copilot-settings="1" data-settings-url="/api/copilot/settings" data-models-url="/api/copilot/models" data-test-url="/api/copilot/test">
-    <div class="folder-dialog-header">
-      <div>
-        <span class="folder-dialog-eyebrow">OpenAI 兼容</span>
-        <h2 id="wsLlmSettingsTitle">AI 提示词助手设置</h2>
+<dialog class="copilot-settings-drawer" id="wsLlmSettingsDialog" aria-labelledby="wsLlmSettingsTitle">
+    <div class="drawer-body" data-copilot-settings="1" data-settings-url="/api/copilot/settings" data-models-url="/api/copilot/models" data-test-url="/api/copilot/test">
+      <div class="drawer-header">
+        <h2 id="wsLlmSettingsTitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> AI 提示词助手设置</h2>
+        <button type="button" class="drawer-close" onclick="document.getElementById('wsLlmSettingsDialog').close()" aria-label="关闭">×</button>
       </div>
-      <button type="button" class="folder-dialog-close" onclick="document.getElementById('wsLlmSettingsDialog').close()" aria-label="关闭">×</button>
-    </div>
-    <p class="folder-dialog-hint">与抽卡共用同一份服务端 LLM 配置。按服务商分别记忆 Base URL、模型与 API Key（保存在浏览器 localStorage）；密钥同时只保存在服务端，页面不会回读明文，留空 API Key 即保留原密钥。</p>
-    <div id="wsLlmSettingsStatus" class="ws-llm-status" data-state="unknown">
-      <strong id="wsLlmStatusLabel">读取中</strong>
-      <span id="wsLlmStatusHint">正在加载当前配置</span>
-    </div>
-    <div class="ws-llm-toggle">
-      <div>
-        <strong>启用 AI 提示词助手</strong>
-        <span>关闭后工坊助手不再调用模型，已保存的连接配置会保留。</span>
+
+      <div class="drawer-content">
+        <p class="drawer-hint">与抽卡共用同一份服务端 LLM 配置。按服务商分别记忆 Base URL、模型与 API Key（保存在浏览器 localStorage）；密钥同时只保存在服务端，页面不会回读明文，留空 API Key 即保留原密钥。</p>
+        <div class="drawer-card">
+          <div class="ws-llm-toggle">
+            <div>
+              <strong>启用 AI 提示词助手</strong>
+              <span>关闭后工坊不再调用模型</span>
+            </div>
+            <button type="button" id="wsLlmEnabledBtn" class="ws-switch" role="switch" aria-checked="true" aria-label="启用 AI 提示词助手"></button>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> 代理配置</h3>
+          
+          <label class="drawer-field">服务商
+            <select id="wsLlmProvider" name="provider">
+              <option value="siliconflow">硅基流动</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai">OpenAI 兼容</option>
+            </select>
+          </label>
+          <label class="drawer-field">Base URL
+            <input type="text" id="wsLlmBaseUrl" name="base_url" placeholder="例如 http://127.0.0.1:11434/v1" autocomplete="off">
+          </label>
+          <label class="drawer-field">API Key
+            <input type="password" id="wsLlmApiKey" name="api_key" placeholder="未配置" autocomplete="new-password">
+          </label>
+          <label class="drawer-field">模型名
+            <div class="ws-llm-model-row">
+              <input type="text" id="wsLlmModel" name="model" placeholder="模型名" autocomplete="off">
+              <button type="button" id="wsLlmFetchModelsBtn" class="drawer-btn-secondary">拉取</button>
+            </div>
+            <div id="wsLlmModelList" class="ws-llm-model-list" hidden></div>
+          </label>
+          <div class="ws-llm-conn-grid">
+            <label class="drawer-field">超时 (秒)
+              <input type="number" id="wsLlmTimeout" name="timeout" min="5" max="300" step="1" value="60">
+            </label>
+            <label class="drawer-field">重试次数
+              <input type="number" id="wsLlmRetries" name="retries" min="0" max="10" step="1" value="3">
+            </label>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> 高级设置</h3>
+          <label class="drawer-field">默认 system prompt
+            <textarea id="wsLlmSystemPrompt" name="default_system_prompt" rows="4" placeholder="可选，会附加到助手系统提示后"></textarea>
+          </label>
+        </div>
       </div>
-      <button type="button" id="wsLlmEnabledBtn" class="ws-switch" role="switch" aria-checked="true" aria-label="启用 AI 提示词助手"></button>
-    </div>
-    <label class="folder-dialog-field">服务商
-      <select id="wsLlmProvider" name="provider">
-        <option value="siliconflow">硅基流动</option>
-        <option value="deepseek">DeepSeek</option>
-        <option value="openai">OpenAI 兼容</option>
-      </select>
-    </label>
-    <label class="folder-dialog-field">Base URL
-      <input type="text" id="wsLlmBaseUrl" name="base_url" placeholder="例如 http://127.0.0.1:11434/v1" autocomplete="off">
-    </label>
-    <label class="folder-dialog-field">API Key
-      <input type="password" id="wsLlmApiKey" name="api_key" placeholder="未配置" autocomplete="new-password">
-    </label>
-    <label class="folder-dialog-field">模型名
-      <div class="ws-llm-model-row">
-        <input type="text" id="wsLlmModel" name="model" placeholder="模型名" autocomplete="off">
-        <button type="button" id="wsLlmFetchModelsBtn" class="btn-sm">拉取模型</button>
+      
+      <div class="drawer-footer">
+        <div id="wsLlmSettingsStatus" class="ws-llm-status" data-state="unknown">
+          <strong id="wsLlmStatusLabel">读取中</strong>
+          <span id="wsLlmStatusHint">正在加载当前配置</span>
+        </div>
+        <p id="wsLlmSettingsError" class="ws-llm-error" hidden></p>
+        <div class="drawer-actions">
+          <button type="button" class="drawer-btn-secondary" id="wsLlmTestBtn">测试连接</button>
+          <button type="button" class="drawer-btn-primary" id="wsLlmSaveBtn">保存设置</button>
+        </div>
       </div>
-      <div id="wsLlmModelList" class="ws-llm-model-list" hidden></div>
-    </label>
-    <div class="ws-llm-conn-grid">
-      <label class="folder-dialog-field">超时时间（秒）
-        <input type="number" id="wsLlmTimeout" name="timeout" min="5" max="300" step="1" value="60">
-      </label>
-      <label class="folder-dialog-field">重试次数
-        <input type="number" id="wsLlmRetries" name="retries" min="0" max="10" step="1" value="3">
-      </label>
     </div>
-    <label class="folder-dialog-field">默认 system prompt
-      <textarea id="wsLlmSystemPrompt" name="default_system_prompt" rows="6" placeholder="可选，会附加到助手系统提示词"></textarea>
-    </label>
-    <p id="wsLlmSettingsError" class="ws-llm-error" hidden></p>
-    <div class="folder-dialog-actions">
-      <button type="button" class="btn-sm" id="wsLlmTestBtn">测试连接</button>
-      <button type="button" class="btn-sm" onclick="document.getElementById('wsLlmSettingsDialog').close()">关闭</button>
-      <button type="button" id="wsLlmSaveBtn">保存设置</button>
-    </div>
-  </div>
-</dialog>
+  </dialog>
 
 <!-- 清除全部二次确认 -->
 <dialog class="folder-dialog" id="wsClearDialog">
@@ -283,7 +296,7 @@
 <link rel="stylesheet" href="/static/copilot/copilot.css?v=84">
 <script src="/static/copilot/copilot.js?v=84"></script>
 <script src="/static/workshop-copilot.js?v=77"></script>
-<script src="/static/copilot-settings.js?v=4"></script>
+<script src="/static/copilot-settings.js?v=5"></script>
 <script>
 var charsData = {{ characters|tojson }};
 var recipesData = { artist_mix: [], scene: [], negative: [], params: [] };

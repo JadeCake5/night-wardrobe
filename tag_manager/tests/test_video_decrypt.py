@@ -591,7 +591,7 @@ class VideoDecryptStaticIntegrationTests(unittest.TestCase):
         style = (base_dir / "static" / "style.css").read_text(encoding="utf-8")
 
         self.assertIn('href="/video-decrypt"', base_html)
-        self.assertIn("v1.24.11", base_html)
+        self.assertIn("v1.24.12", base_html)
         self.assertIn("style.css?v=92", base_html)
         self.assertIn("window.__wardrobePageCleanup", base_html)
         self.assertIn('name="password" type="password" autocomplete="off"', template)

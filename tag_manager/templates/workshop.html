@@ -488,6 +488,19 @@ function startEdit(type) {
   pre.after(ta);
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
+  
+  // 记录基础值和编辑前状态，用于即时持久化和 Esc 回滚
+  const base = joinParts(lastParts[type]);
+  const preEditTrack = editedTrack[type];
+  const preEditBase = editedBase[type];
+  
+  ta.addEventListener('input', () => {
+    // 输入时即时持久化，防止刷新丢失
+    sessionStorage.setItem(editedKey(type), JSON.stringify({ text: ta.value, base: base }));
+    editedTrack[type] = ta.value;
+    editedBase[type] = base;
+  });
+
   let finished = false;
   const finish = () => {
     if (finished) return;
@@ -502,6 +515,14 @@ function startEdit(type) {
       ta.remove();
       pre.style.display = '';
       delete pre.dataset.editing;
+      // Esc 回滚即时持久化写入的数据
+      editedTrack[type] = preEditTrack;
+      editedBase[type] = preEditBase;
+      if (preEditTrack !== null) {
+        sessionStorage.setItem(editedKey(type), JSON.stringify({ text: preEditTrack, base: preEditBase }));
+      } else {
+        sessionStorage.removeItem(editedKey(type));
+      }
     }
   });
   // 失焦延迟完成：让 header 按钮点击先注册，避免被 blur 抢先

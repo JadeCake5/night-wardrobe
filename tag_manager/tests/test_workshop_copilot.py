@@ -122,6 +122,12 @@ class WorkshopCopilotContractTests(unittest.TestCase):
         self.assertIn("document.removeEventListener('keydown', onEsc)", self.js)
         self.assertIn("unmountIsland()", self.js)
 
+    def test手改即时持久化与Escape回滚(self) -> None:
+        self.assertIn("ta.addEventListener('input'", self.tpl)
+        self.assertIn("sessionStorage.setItem(editedKey(type)", self.tpl)
+        self.assertIn("editedTrack[type] = ta.value", self.tpl)
+        self.assertIn("editedTrack[type] = preEditTrack", self.tpl)
+        self.assertIn("sessionStorage.removeItem(editedKey(type))", self.tpl)
 
 class WorkshopCopilotConversationTests(unittest.TestCase):
     """对话式契约改由 Island 源码钉住；壳只保留 composer 无 id 与 IME 守卫。"""
@@ -507,7 +513,7 @@ class WorkshopLlmSettingsContractTests(unittest.TestCase):
     def test侧栏不再包含AI设置入口(self) -> None:
         self.assertNotIn('href="/llm"', self.base)
         self.assertNotIn("AI 设置", self.base)
-        self.assertIn("v1.24.11", self.base)
+        self.assertIn("v1.24.12", self.base)
         self.assertIn("style.css?v=92", self.base)
 
     def test工坊header有设置按钮与dialog(self) -> None:

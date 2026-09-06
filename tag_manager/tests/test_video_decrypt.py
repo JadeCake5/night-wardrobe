@@ -347,14 +347,51 @@ class VideoDecryptHttpTests(unittest.TestCase):
             download = self.client.get(f"/video-decrypt/jobs/{job['id']}/download")
             deleted = self.client.post(
                 f"/video-decrypt/jobs/{job['id']}/delete",
-                follow_redirects=False,
+                headers={"Accept": "application/json"},
             )
 
         self.assertEqual(200, status.status_code)
         self.assertEqual("succeeded", status.json()["status"])
         self.assertEqual(200, download.status_code)
         self.assertEqual(b"fake-mp4", download.content)
+        self.assertEqual(200, deleted.status_code)
+        self.assertTrue(deleted.json()["ok"])
+        self.assertIn("已删除", deleted.json()["message"])
+
+    def test删除接口对浏览器表单保持303重定向兜底(self) -> None:
+        with patch.object(routes, "video_decrypt_service", self.service):
+            created = self.client.post(
+                "/video-decrypt/jobs",
+                files={"file": ("encrypted.evideo", b"encrypted", "video/x-comfy-encrypted")},
+                data={"password": "秘密", "output_name": ""},
+            )
+            job = wait_for_status(self.service, created.json()["id"], {"succeeded"})
+            deleted = self.client.post(
+                f"/video-decrypt/jobs/{job['id']}/delete",
+                headers={"Accept": "text/html,application/xhtml+xml"},
+                follow_redirects=False,
+            )
+
         self.assertEqual(303, deleted.status_code)
+        self.assertIn("/video-decrypt?", deleted.headers["location"])
+        self.assertIn("message_type=success", deleted.headers["location"])
+
+    def test删除接口错误时按客户端类型返回JSON或重定向(self) -> None:
+        with patch.object(routes, "video_decrypt_service", self.service):
+            missing_json = self.client.post(
+                "/video-decrypt/jobs/999/delete",
+                headers={"Accept": "application/json"},
+            )
+            missing_html = self.client.post(
+                "/video-decrypt/jobs/999/delete",
+                headers={"Accept": "text/html"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(404, missing_json.status_code)
+        self.assertEqual("job_missing", missing_json.json()["error"]["code"])
+        self.assertEqual(303, missing_html.status_code)
+        self.assertIn("message_type=error", missing_html.headers["location"])
 
     def test非法扩展名和运行时不可用返回结构化错误(self) -> None:
         with patch.object(routes, "video_decrypt_service", self.service):
@@ -391,6 +428,91 @@ class VideoDecryptHttpTests(unittest.TestCase):
         self.assertIn("disabled", unavailable_page.text)
         self.assertEqual(503, unavailable_create.status_code)
         self.assertEqual("runtime_unavailable", unavailable_create.json()["error"]["code"])
+
+
+class VideoDecryptPageUiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.db_path = self.root / "test.sqlite3"
+        db.init_db(self.db_path)
+        self.service = VideoDecryptService(
+            storage_root=self.root / "storage",
+            connect_factory=lambda: db.connect(self.db_path),
+            adapter=FakeAdapter(),
+        )
+        self.client = TestClient(app_module.app)
+
+    def tearDown(self) -> None:
+        self.service.shutdown()
+        self.temp_dir.cleanup()
+
+    def insert_job(self, status: str, *, error_code: str = "", error_message: str = "", input_size: int = 0) -> int:
+        with db.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO video_decrypt_jobs
+                    (source_name, input_path, output_name, output_path, status,
+                     error_code, error_message, input_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"{status}.evideo",
+                    f"inbox/{status}.evideo",
+                    f"{status}.mp4",
+                    f"outputs/{status}.mp4",
+                    status,
+                    error_code,
+                    error_message,
+                    input_size,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def render_page(self) -> str:
+        with patch.object(routes, "video_decrypt_service", self.service):
+            response = self.client.get("/video-decrypt")
+        self.assertEqual(200, response.status_code)
+        return response.text
+
+    def test空态带选择文件CTA(self) -> None:
+        html = self.render_page()
+        self.assertIn("还没有视频解密任务", html)
+        self.assertIn('data-video-pick-file', html)
+        self.assertIn("选择 .evideo 文件", html)
+
+    def test任务操作按钮按状态分层(self) -> None:
+        self.insert_job("queued")
+        self.insert_job("succeeded", input_size=1048576)
+        self.insert_job("failed", error_code="authentication_failed", error_message="密码错误或密文文件已损坏", input_size=1048576)
+        self.insert_job("interrupted", error_code="interrupted", error_message="应用重启导致任务中断，请重新提交", input_size=1048576)
+        html = self.render_page()
+
+        self.assertIn("取消排队", html)
+        self.assertIn('data-delete-mode="cancel"', html)
+        self.assertIn("下载 MP4", html)
+        self.assertIn("重新解密", html)
+        self.assertIn('data-video-retry', html)
+        self.assertIn('data-retry-output="failed.mp4"', html)
+        # error_code 映射为友好标题，并提示密文已清理需重新上传
+        self.assertIn("密码错误或密文已损坏", html)
+        self.assertIn("应用重启导致中断", html)
+        self.assertIn("失败后密文已自动清理，需重新上传", html)
+        # uploading 之前的任务没有可读大小时不显示 0.00 MB
+        self.assertNotIn("0.00 MB", html)
+        self.assertIn("1.00 MB", html)
+
+    def test上传表单包含多选密码显隐与删除对话框(self) -> None:
+        html = self.render_page()
+        self.assertIn('type="file" name="file" accept=".evideo,video/x-comfy-encrypted,application/octet-stream" required multiple', html)
+        self.assertIn('data-password-toggle', html)
+        self.assertIn('aria-label="显示密码"', html)
+        self.assertIn('data-video-drop', html)
+        self.assertIn("选择或拖入 .evideo 密文", html)
+        self.assertIn('data-video-delete-dialog', html)
+        self.assertIn('data-video-delete-confirm', html)
+        self.assertIn('data-video-conn-banner', html)
+        self.assertIn("连接中断，正在重试", html)
 
 
 class RealVideoDecryptIntegrationTests(unittest.TestCase):
@@ -469,8 +591,8 @@ class VideoDecryptStaticIntegrationTests(unittest.TestCase):
         style = (base_dir / "static" / "style.css").read_text(encoding="utf-8")
 
         self.assertIn('href="/video-decrypt"', base_html)
-        self.assertIn("v1.24.2", base_html)
-        self.assertIn("style.css?v=85", base_html)
+        self.assertIn("v1.24.3", base_html)
+        self.assertIn("style.css?v=86", base_html)
         self.assertIn("window.__wardrobePageCleanup", base_html)
         self.assertIn('name="password" type="password" autocomplete="off"', template)
         self.assertNotIn('id="videoPassword"', template)
@@ -494,6 +616,51 @@ class VideoDecryptStaticIntegrationTests(unittest.TestCase):
         self.assertIn(".video-job-progress", style)
         self.assertIn(".video-job-progress-fill", style)
         self.assertIn("Windows 播放器可识别总时长和拖动进度", template)
+
+    def test前端交互增强契约完整(self) -> None:
+        base_dir = Path(app_module.BASE_DIR)
+        template = (base_dir / "templates" / "video_decrypt.html").read_text(encoding="utf-8")
+        style = (base_dir / "static" / "style.css").read_text(encoding="utf-8")
+
+        # 上传占位卡：提交即插入列表、串行入队、进度进入卡片
+        self.assertIn("createUploadCard", template)
+        self.assertIn("ensureJobList", template)
+        self.assertIn("for (const file of files)", template)
+        self.assertIn("list.prepend(card.item)", template)
+        self.assertIn("上传完成，任务已进入队列", template)
+        # 密码显隐切换
+        self.assertIn("data-password-toggle", template)
+        self.assertIn("passwordInput.type = show ? 'text' : 'password'", template)
+        # 真拖放
+        self.assertIn("'dragover'", template)
+        self.assertIn("is-dragover", template)
+        self.assertIn("new DataTransfer()", template)
+        self.assertIn("fileInput.files = transfer.files", template)
+        # 轮询优化：可见性暂停、失败退避、内容比对
+        self.assertIn("visibilitychange", template)
+        self.assertIn("document.hidden", template)
+        self.assertIn("consecutiveFailures >= 3", template)
+        self.assertIn("Math.min(pollDelay * 2", template)
+        self.assertIn("lastJobsHtml", template)
+        # 连接中断横幅位于 .video-jobs 内，innerHTML 替换后必须现查而非沿用旧引用
+        self.assertIn("function getConnBanner()", template)
+        self.assertIn("jobsSection.querySelector('[data-video-conn-banner]')", template)
+        self.assertNotIn("const connBanner", template)
+        # 删除走自定义对话框 + JSON + toast
+        self.assertIn("data-video-delete-dialog", template)
+        self.assertIn("deleteDialog.showModal()", template)
+        self.assertIn("Accept: 'application/json'", template)
+        self.assertIn("ws-toast", template)
+        self.assertNotIn("window.confirm", template)
+        # error_code 友好文案映射
+        self.assertIn('"interrupted": "应用重启导致中断"', template)
+        self.assertIn('"authentication_failed"', template)
+        # 样式
+        self.assertIn(".video-password-toggle", style)
+        self.assertIn(".video-file-drop.is-dragover", style)
+        self.assertIn(".video-retry-button", style)
+        self.assertIn(".empty-cta", style)
+        self.assertIn(".video-conn-banner", style)
 
 
 if __name__ == "__main__":

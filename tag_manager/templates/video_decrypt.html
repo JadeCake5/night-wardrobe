@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+{% set vd_error_labels = {
+  "interrupted": "应用重启导致中断",
+  "authentication_failed": "密码错误或密文已损坏",
+  "unsupported_protocol": "文件不是插件 2.0 生成的密文",
+  "unsupported_version": "密文协议版本不受支持",
+  "corrupted_file": "密文文件头损坏",
+  "remux_failed": "MP4 播放索引整理失败",
+  "disk_full": "磁盘空间不足",
+  "upload_failed": "上传失败",
+  "output_missing": "解密器未生成输出文件",
+  "unexpected_error": "解密失败"
+} %}
 <section class="video-decrypt-page">
   <header class="video-decrypt-hero">
     <div>
@@ -29,23 +41,26 @@
     <div class="section-heading">
       <div>
         <h2>上传并解密</h2>
-        <p>大文件会分块上传；服务端一次只处理一个视频。</p>
+        <p>大文件会分块上传；服务端一次只处理一个视频，多文件将使用同一密码串行入队。</p>
       </div>
       <span class="queue-badge">单任务队列</span>
     </div>
     <form id="videoDecryptForm" action="/video-decrypt/jobs" method="post" enctype="multipart/form-data">
-      <label class="video-file-drop">
+      <label class="video-file-drop" data-video-drop>
         <span class="video-file-icon" aria-hidden="true">▶</span>
-        <strong>选择 .evideo 密文</strong>
-        <small id="videoFileName">仅支持 .evideo</small>
-        <input id="videoFileInput" type="file" name="file" accept=".evideo,video/x-comfy-encrypted,application/octet-stream" required {{ 'disabled' if not runtime.available else '' }}>
+        <strong>选择或拖入 .evideo 密文</strong>
+        <small id="videoFileName">仅支持 .evideo，可多选</small>
+        <input id="videoFileInput" type="file" name="file" accept=".evideo,video/x-comfy-encrypted,application/octet-stream" required multiple {{ 'disabled' if not runtime.available else '' }}>
       </label>
       <div class="video-decrypt-fields">
         <label>输出名称
           <input id="videoOutputName" name="output_name" placeholder="留空则自动生成 *_restored.mp4" {{ 'disabled' if not runtime.available else '' }}>
         </label>
         <label>解密密码
-          <input name="password" type="password" autocomplete="off" placeholder="不会保存到数据库或浏览器状态" required {{ 'disabled' if not runtime.available else '' }}>
+          <span class="video-password-wrap">
+            <input name="password" type="password" autocomplete="off" placeholder="不会保存到数据库或浏览器状态" required {{ 'disabled' if not runtime.available else '' }}>
+            <button type="button" class="video-password-toggle" data-password-toggle aria-pressed="false" aria-label="显示密码" {{ 'disabled' if not runtime.available else '' }}>👁</button>
+          </span>
         </label>
       </div>
       <div class="upload-progress" id="uploadProgress" hidden>
@@ -65,6 +80,7 @@
       </div>
       <span>{{ jobs|length }} 项</span>
     </div>
+    <p class="notice notice-error video-conn-banner" data-video-conn-banner hidden>连接中断，正在重试…</p>
     {% if jobs %}
     <div class="video-job-list">
       {% for job in jobs %}
@@ -85,14 +101,23 @@
           {% endif %}
           <h3>{{ job.source_name }}</h3>
           <p>输出：{{ job.output_name }}</p>
-          <small>{{ "%.2f"|format(job.input_size / 1048576) }} MB · 创建于 {{ job.created_at }}</small>
-          {% if job.error_message %}<div class="video-job-error" data-job-error>{{ job.error_message }}</div>{% endif %}
+          <small>{% if job.input_size %}{{ "%.2f"|format(job.input_size / 1048576) }} MB · {% endif %}创建于 {{ job.created_at }}</small>
+          {% if job.error_message %}
+          <div class="video-job-error" data-job-error>
+            <strong>{{ vd_error_labels.get(job.error_code, "任务失败") }}</strong>
+            <span>{{ job.error_message }}</span>
+            <small>失败后密文已自动清理，需重新上传。</small>
+          </div>
+          {% endif %}
         </div>
         <div class="video-job-actions">
+          {% if job.status in ('failed', 'interrupted') %}
+          <button type="button" class="video-retry-button" data-video-retry data-retry-output="{{ job.output_name }}">重新解密</button>
+          {% endif %}
           {% if job.can_download %}<a class="video-download-button" href="/video-decrypt/jobs/{{ job.id }}/download">下载 MP4</a>{% endif %}
           {% if job.can_delete %}
-          <form method="post" action="/video-decrypt/jobs/{{ job.id }}/delete" data-video-delete-form>
-            <button type="submit" class="video-delete-button">删除</button>
+          <form method="post" action="/video-decrypt/jobs/{{ job.id }}/delete" data-video-delete-form data-delete-mode="{{ 'cancel' if job.status == 'queued' else 'delete' }}" data-job-name="{{ job.source_name }}">
+            <button type="submit" class="video-delete-button">{{ '取消排队' if job.status == 'queued' else '删除' }}</button>
           </form>
           {% endif %}
         </div>
@@ -100,7 +125,10 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="empty-hint">还没有视频解密任务。选择 .evideo 密文后即可开始。</p>
+    <div class="empty-hint video-empty">
+      <p>还没有视频解密任务。选择 .evideo 密文后即可开始。</p>
+      <button type="button" class="empty-cta" data-video-pick-file {{ 'disabled' if not runtime.available else '' }}>选择 .evideo 文件</button>
+    </div>
     {% endif %}
   </section>
   <template id="videoJobProgressTpl">
@@ -114,6 +142,22 @@
       <span class="video-job-progress-message"></span>
     </div>
   </template>
+  <dialog class="folder-dialog video-job-dialog" data-video-delete-dialog aria-labelledby="video-delete-title">
+    <div class="folder-dialog-body">
+      <div class="folder-dialog-header">
+        <div>
+          <span class="folder-dialog-eyebrow danger">不可撤销</span>
+          <h2 id="video-delete-title" data-video-delete-title>删除任务</h2>
+        </div>
+        <button class="folder-dialog-close" type="button" data-video-delete-close aria-label="关闭">×</button>
+      </div>
+      <p class="folder-dialog-hint" data-video-delete-message></p>
+      <div class="folder-dialog-actions">
+        <button type="button" class="btn-sm" data-video-delete-close>取消</button>
+        <button type="button" class="btn-danger" data-video-delete-confirm>确认删除</button>
+      </div>
+    </div>
+  </dialog>
 </section>
 
 <script>
@@ -127,69 +171,257 @@
   const progressBar = document.getElementById('uploadProgressBar');
   const progressText = document.getElementById('uploadProgressText');
   const errorBox = document.getElementById('videoDecryptError');
+  const outputNameInput = document.getElementById('videoOutputName');
+  const passwordInput = form ? form.querySelector('input[name="password"]') : null;
+  const jobsSection = document.querySelector('.video-jobs');
+  const deleteDialog = document.querySelector('[data-video-delete-dialog]');
   let pollTimer = 0;
+  let pollDelay = 1000;
+  let consecutiveFailures = 0;
+  let lastJobsHtml = null;
+  let uploading = false;
   let xhr = null;
+  let toastTimer = 0;
+
+  function toast(message, type) {
+    let el = document.querySelector('.ws-toast');
+    if (!el) {
+      el = document.createElement('div');
+      document.body.appendChild(el);
+    }
+    el.className = 'ws-toast' + (type ? ' ws-toast-' + type : '');
+    el.textContent = message;
+    el.classList.add('show');
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => el.classList.remove('show'), type === 'error' ? 2600 : 1600);
+  }
 
   function showError(message) {
     errorBox.textContent = message;
     errorBox.hidden = false;
   }
 
-  if (fileInput) {
-    fileInput.addEventListener('change', () => {
-      fileName.textContent = fileInput.files[0]?.name || '仅支持 .evideo';
+  const passwordToggle = document.querySelector('[data-password-toggle]');
+  if (passwordToggle && passwordInput) {
+    passwordToggle.addEventListener('click', () => {
+      const show = passwordInput.type === 'password';
+      passwordInput.type = show ? 'text' : 'password';
+      passwordToggle.setAttribute('aria-pressed', String(show));
+      passwordToggle.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
+      passwordToggle.classList.toggle('is-on', show);
+      passwordInput.focus();
     });
   }
 
-  async function refreshJobs() {
-    try {
-      const response = await fetch('/video-decrypt');
-      if (!response.ok) return;
-      const text = await response.text();
-      const doc = new DOMParser().parseFromString(text, 'text/html');
-      const fresh = doc.querySelector('.video-jobs');
-      const current = document.querySelector('.video-jobs');
-      // 只替换任务区内部，section 元素保留以维持删除表单的事件委托
-      if (fresh && current) current.innerHTML = fresh.innerHTML;
-    } catch (_) {}
+  function updateFileName() {
+    const count = fileInput && fileInput.files ? fileInput.files.length : 0;
+    if (!count) fileName.textContent = '仅支持 .evideo，可多选';
+    else if (count === 1) fileName.textContent = fileInput.files[0].name;
+    else fileName.textContent = `已选 ${count} 个文件`;
   }
 
-  if (form) {
-    form.addEventListener('submit', event => {
+  if (fileInput) {
+    fileInput.addEventListener('change', updateFileName);
+  }
+
+  const dropZone = document.querySelector('[data-video-drop]');
+  if (dropZone && fileInput) {
+    const onDragOver = event => {
       event.preventDefault();
+      dropZone.classList.add('is-dragover');
+    };
+    dropZone.addEventListener('dragenter', onDragOver);
+    dropZone.addEventListener('dragover', onDragOver);
+    dropZone.addEventListener('dragleave', event => {
+      if (dropZone.contains(event.relatedTarget)) return;
+      dropZone.classList.remove('is-dragover');
+    });
+    dropZone.addEventListener('drop', event => {
+      event.preventDefault();
+      dropZone.classList.remove('is-dragover');
+      const files = [...(event.dataTransfer ? event.dataTransfer.files : [])]
+        .filter(file => file.name.toLowerCase().endsWith('.evideo'));
+      if (!files.length) {
+        showError('只能上传插件 2.0 生成的 .evideo 文件');
+        return;
+      }
       errorBox.hidden = true;
-      progress.hidden = false;
-      progressBar.style.width = '0%';
-      progressText.textContent = '正在上传…';
-      const submit = form.querySelector('button[type="submit"]');
-      submit.disabled = true;
+      const transfer = new DataTransfer();
+      files.forEach(file => transfer.items.add(file));
+      fileInput.files = transfer.files;
+      updateFileName();
+    });
+  }
+
+  // 横幅在 .video-jobs 内部，refreshJobs 替换 innerHTML 后旧引用会失效，每次现查
+  function getConnBanner() {
+    return jobsSection ? jobsSection.querySelector('[data-video-conn-banner]') : null;
+  }
+
+  function notePollSuccess() {
+    consecutiveFailures = 0;
+    pollDelay = 1000;
+    const banner = getConnBanner();
+    if (banner) banner.hidden = true;
+  }
+
+  function notePollFailure() {
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= 3) {
+      pollDelay = Math.min(pollDelay * 2, 15000);
+      const banner = getConnBanner();
+      if (banner) banner.hidden = false;
+    }
+  }
+
+  async function refreshJobs() {
+    const response = await fetch('/video-decrypt');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    const fresh = doc.querySelector('.video-jobs');
+    const current = document.querySelector('.video-jobs');
+    // 只替换任务区内部，section 元素保留以维持删除表单的事件委托
+    if (!fresh || !current) return;
+    const html = fresh.innerHTML;
+    // 内容无变化时不触碰 DOM，避免列表闪烁与焦点丢失
+    if (html === (lastJobsHtml !== null ? lastJobsHtml : current.innerHTML)) return;
+    current.innerHTML = html;
+    lastJobsHtml = html;
+  }
+
+  function ensureJobList() {
+    let list = jobsSection.querySelector('.video-job-list');
+    if (list) return list;
+    const empty = jobsSection.querySelector('.video-empty');
+    if (empty) empty.remove();
+    list = document.createElement('div');
+    list.className = 'video-job-list';
+    jobsSection.appendChild(list);
+    return list;
+  }
+
+  function createUploadCard(name) {
+    const item = document.createElement('article');
+    item.className = 'video-job status-uploading';
+    const main = document.createElement('div');
+    main.className = 'video-job-main';
+    const state = document.createElement('span');
+    state.className = 'video-job-state';
+    const dot = document.createElement('i');
+    const label = document.createElement('b');
+    label.textContent = '上传中';
+    state.append(dot, label);
+    main.appendChild(state);
+    const tpl = document.getElementById('videoJobProgressTpl');
+    const wrap = tpl
+      ? tpl.content.firstElementChild.cloneNode(true)
+      : document.createElement('div');
+    if (!tpl) wrap.className = 'video-job-progress';
+    main.appendChild(wrap);
+    const title = document.createElement('h3');
+    title.textContent = name;
+    main.appendChild(title);
+    const meta = document.createElement('small');
+    meta.textContent = '等待上传完成…';
+    main.appendChild(meta);
+    item.appendChild(main);
+    return { item, wrap };
+  }
+
+  function setCardProgress(card, percent, message) {
+    const fill = card.wrap.querySelector('.video-job-progress-fill');
+    const percentEl = card.wrap.querySelector('.video-job-progress-percent');
+    const messageEl = card.wrap.querySelector('.video-job-progress-message');
+    if (fill) fill.style.width = percent + '%';
+    if (percentEl) percentEl.textContent = percent + '%';
+    if (messageEl) messageEl.textContent = message;
+    card.wrap.setAttribute('data-vd-progress', String(percent));
+  }
+
+  function uploadOne(file, password, outputName, card) {
+    return new Promise(resolve => {
       xhr = new XMLHttpRequest();
       xhr.open('POST', form.action);
       xhr.responseType = 'json';
       xhr.upload.addEventListener('progress', uploadEvent => {
         if (!uploadEvent.lengthComputable) return;
         const percent = Math.round(uploadEvent.loaded / uploadEvent.total * 100);
+        setCardProgress(card, percent, `正在上传… ${percent}%`);
         progressBar.style.width = percent + '%';
-        progressText.textContent = `正在上传… ${percent}%`;
+        progressText.textContent = `正在上传 ${file.name}… ${percent}%`;
       });
-      xhr.addEventListener('load', () => {
+      xhr.addEventListener('load', async () => {
         if (xhr.status === 202) {
+          setCardProgress(card, 100, '上传完成，任务已进入队列');
           progressBar.style.width = '100%';
-          progressText.textContent = '上传完成，任务已进入队列';
-          form.querySelector('input[name="password"]').value = '';
-          submit.disabled = false;
-          refreshJobs();
+          progressText.textContent = `上传完成：${file.name}`;
+          try {
+            await refreshJobs();
+            notePollSuccess();
+          } catch (_) {
+            notePollFailure();
+          }
+          resolve(true);
           return;
         }
-        submit.disabled = false;
+        card.item.remove();
         const message = xhr.response?.error?.message || `创建任务失败：HTTP ${xhr.status}`;
         showError(message);
+        toast(message, 'error');
+        resolve(false);
       });
       xhr.addEventListener('error', () => {
-        submit.disabled = false;
-        showError('上传失败，请检查本地服务后重试');
+        card.item.remove();
+        const message = `上传 ${file.name} 失败，请检查本地服务后重试`;
+        showError(message);
+        toast(message, 'error');
+        resolve(false);
       });
-      xhr.send(new FormData(form));
+      const data = new FormData();
+      data.append('file', file, file.name);
+      data.append('password', password);
+      if (outputName) data.append('output_name', outputName);
+      xhr.send(data);
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (uploading) return;
+      const files = [...fileInput.files];
+      if (!files.length) return;
+      errorBox.hidden = true;
+      uploading = true;
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      fileInput.disabled = true;
+      const password = passwordInput.value;
+      // 多文件共用一个密码串行入队；自定义输出名称仅对单文件生效
+      const outputName = files.length === 1 ? outputNameInput.value : '';
+      progress.hidden = false;
+      progressBar.style.width = '0%';
+      progressText.textContent = '正在上传…';
+      const list = ensureJobList();
+      for (const file of files) {
+        const card = createUploadCard(file.name);
+        list.prepend(card.item);
+        card.item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const ok = await uploadOne(file, password, outputName, card);
+        if (!ok) break;
+      }
+      passwordInput.value = '';
+      outputNameInput.value = '';
+      fileInput.value = '';
+      updateFileName();
+      submit.disabled = false;
+      fileInput.disabled = false;
+      uploading = false;
+      window.setTimeout(() => {
+        progress.hidden = true;
+        progressBar.style.width = '0%';
+      }, 400);
     });
   }
 
@@ -227,12 +459,19 @@
   async function pollJobs() {
     const active = [...document.querySelectorAll('[data-video-job-id]')]
       .filter(item => ['uploading', 'queued', 'running'].includes(item.dataset.videoJobStatus));
-    if (!active.length) return;
+    if (!active.length) {
+      notePollSuccess();
+      return;
+    }
     let finished = false;
+    let healthy = true;
     for (const item of active) {
       try {
         const response = await fetch(`/api/video-decrypt/jobs/${item.dataset.videoJobId}`);
-        if (!response.ok) continue;
+        if (!response.ok) {
+          healthy = false;
+          continue;
+        }
         const job = await response.json();
         const label = item.querySelector('[data-job-status-label]');
         if (label) label.textContent = job.status_label;
@@ -244,28 +483,106 @@
             item.dataset.videoJobStatus = job.status;
           }
         }
-      } catch (_) {}
+      } catch (_) {
+        healthy = false;
+      }
     }
-    if (finished) await refreshJobs();
+    if (healthy) notePollSuccess();
+    else notePollFailure();
+    if (finished) {
+      try {
+        await refreshJobs();
+        notePollSuccess();
+      } catch (_) {
+        notePollFailure();
+      }
+    }
   }
 
-  const jobsSection = document.querySelector('.video-jobs');
+  let pendingDeleteForm = null;
+
+  function openDeleteDialog(deleteForm) {
+    if (!deleteDialog) return false;
+    const cancelMode = deleteForm.dataset.deleteMode === 'cancel';
+    const name = deleteForm.dataset.jobName || '';
+    deleteDialog.querySelector('[data-video-delete-title]').textContent = cancelMode ? '取消排队' : '删除任务';
+    deleteDialog.querySelector('[data-video-delete-message]').textContent = cancelMode
+      ? `确认取消「${name}」的排队？该任务将从队列中移除。`
+      : `确认删除任务「${name}」？其输出文件会一并从磁盘移除。`;
+    deleteDialog.querySelector('[data-video-delete-confirm]').textContent = cancelMode ? '确认取消' : '确认删除';
+    pendingDeleteForm = deleteForm;
+    deleteDialog.showModal();
+    return true;
+  }
+
+  if (deleteDialog) {
+    deleteDialog.querySelectorAll('[data-video-delete-close]').forEach(button => {
+      button.addEventListener('click', () => {
+        pendingDeleteForm = null;
+        deleteDialog.close();
+      });
+    });
+    deleteDialog.querySelector('[data-video-delete-confirm]').addEventListener('click', async () => {
+      const deleteForm = pendingDeleteForm;
+      pendingDeleteForm = null;
+      deleteDialog.close();
+      if (!deleteForm) return;
+      try {
+        const response = await fetch(deleteForm.action, {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+        });
+        const payload = await response.json().catch(() => null);
+        const message = payload?.message || payload?.error?.message
+          || (response.ok ? '操作完成' : `操作失败：HTTP ${response.status}`);
+        toast(message, response.ok ? 'success' : 'error');
+        if (response.ok) {
+          await refreshJobs();
+          notePollSuccess();
+        }
+      } catch (_) {
+        toast('删除请求失败，请稍后重试', 'error');
+      }
+    });
+  }
+
   if (jobsSection) {
     jobsSection.addEventListener('submit', event => {
       const deleteForm = event.target.closest('[data-video-delete-form]');
       if (!deleteForm) return;
       event.preventDefault();
-      if (!window.confirm('确认删除此任务及其输出文件？')) return;
-      fetch(deleteForm.action, { method: 'POST' })
-        .then(response => { if (response.ok || response.redirected) refreshJobs(); })
-        .catch(() => showError('删除请求失败，请稍后重试'));
+      if (!openDeleteDialog(deleteForm)) deleteForm.submit();
+    });
+    jobsSection.addEventListener('click', event => {
+      const retry = event.target.closest('[data-video-retry]');
+      if (retry) {
+        outputNameInput.value = retry.dataset.retryOutput || '';
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        passwordInput.focus({ preventScroll: true });
+        toast('已回填输出名称，请重新选择 .evideo 密文并输入密码', 'warning');
+        return;
+      }
+      const pick = event.target.closest('[data-video-pick-file]');
+      if (pick && fileInput && !fileInput.disabled) fileInput.click();
     });
   }
 
-  pollTimer = window.setInterval(pollJobs, 1000);
+  async function pollTick() {
+    if (!document.hidden) await pollJobs();
+    pollTimer = window.setTimeout(pollTick, pollDelay);
+  }
+
+  function onVisibilityChange() {
+    if (pollTimer) window.clearTimeout(pollTimer);
+    if (!document.hidden) pollTick();
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  pollTimer = window.setTimeout(pollTick, pollDelay);
   window.__wardrobePageCleanup = () => {
-    if (pollTimer) window.clearInterval(pollTimer);
+    if (pollTimer) window.clearTimeout(pollTimer);
     if (xhr && xhr.readyState !== XMLHttpRequest.DONE) xhr.abort();
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     window.__wardrobePageCleanup = null;
   };
 })();

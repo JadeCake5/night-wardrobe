@@ -515,9 +515,26 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .status-failed .video-job-state i, .status-interrupted .video-job-state i { background: #f87171; }
 @keyframes video-job-pulse { 50% { opacity: .35; transform: scale(.72); } }
 .video-job-error { margin-top: 8px; color: #fca5a5; font-size: 12px; }
+.video-job-error strong { display: block; margin-bottom: 2px; color: #f87171; font-size: 13px; }
+.video-job-error small { display: block; margin-top: 4px; color: var(--muted); }
 .video-job-actions { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
 .video-download-button { padding: 8px 12px; border: 1px solid rgba(74,222,128,.36); border-radius: 10px; background: rgba(20,83,45,.22); color: #bbf7d0; }
 .video-delete-button { background: rgba(127,29,29,.2); border-color: rgba(248,113,113,.35); color: #fecaca; box-shadow: none; }
+.video-retry-button { padding: 8px 12px; border: 1px solid rgba(56,189,248,.5); border-radius: 10px; background: rgba(8,145,178,.22); color: #a5f3fc; box-shadow: none; }
+.video-retry-button:hover { background: rgba(8,145,178,.42); border-color: rgba(56,189,248,.75); }
+.video-file-drop.is-dragover { border-color: #67e8f9; background: rgba(14,116,144,.22); box-shadow: 0 0 0 3px rgba(56,189,248,.18); }
+.video-password-wrap { position: relative; display: block; }
+.video-password-wrap input { width: 100%; padding-right: 42px; box-sizing: border-box; }
+.video-password-toggle { position: absolute; top: 50%; right: 5px; transform: translateY(-50%); min-width: 32px; min-height: 32px; padding: 0 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font-size: 14px; box-shadow: none; cursor: pointer; }
+.video-password-toggle:hover { color: #fff; background: rgba(76,29,149,.4); }
+.video-password-toggle.is-on { color: #67e8f9; }
+.video-password-toggle:disabled { opacity: .45; cursor: not-allowed; }
+.video-empty { display: grid; gap: 12px; justify-items: center; }
+.video-empty p { margin: 0; }
+.empty-cta { padding: 9px 18px; border-radius: 10px; }
+.empty-cta:disabled { opacity: .45; cursor: not-allowed; }
+.video-conn-banner { margin: 0 0 10px; }
+.video-job-dialog { width: min(440px, calc(100vw - 32px)); }
 @media (max-width: 760px) { .video-decrypt-hero, .video-job { display: grid; } .runtime-card { min-width: 0; } .video-decrypt-fields { grid-template-columns: 1fr; } .video-job-actions { justify-content: flex-start; } }
 
 /* ─── 漫画工具：紧凑工具页布局 ─── */

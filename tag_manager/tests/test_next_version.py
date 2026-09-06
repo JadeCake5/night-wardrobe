@@ -641,10 +641,10 @@ class VideoDecryptAjaxTests(unittest.TestCase):
 
     def test任务区局部刷新取代整页跳转(self) -> None:
         tpl = self.tpl
-        # 局部刷新：fetch 页面 + DOMParser 抽取 .video-jobs 替换 innerHTML
+        # 局部刷新：fetch 页面 + DOMParser 抽取 .video-jobs，无变化不替换 DOM
         self.assertIn("async function refreshJobs()", tpl)
         self.assertIn("DOMParser", tpl)
-        self.assertIn("current.innerHTML = fresh.innerHTML", tpl)
+        self.assertIn("current.innerHTML = html", tpl)
         # 上传完成与任务终态都不再整页跳转
         self.assertNotIn("location.href = '/video-decrypt'", tpl)
         # 轮询改动态查询活动任务（不再依赖首屏静态列表）
@@ -655,7 +655,9 @@ class VideoDecryptAjaxTests(unittest.TestCase):
         tpl = self.tpl
         self.assertIn("data-video-delete-form", tpl)
         self.assertIn("jobsSection.addEventListener('submit'", tpl)
-        self.assertIn("fetch(deleteForm.action, { method: 'POST' })", tpl)
+        # 删除经自定义对话框确认后以 JSON fetch 提交并 toast 反馈
+        self.assertIn("fetch(deleteForm.action, {", tpl)
+        self.assertIn("Accept: 'application/json'", tpl)
         # 内联 onsubmit 确认已移入 JS 委托
         self.assertNotIn("onsubmit=", tpl)
         # 清理钩子与流式上传契约不变
@@ -744,8 +746,8 @@ class LlmSettingsEmbedTests(unittest.TestCase):
 
     def testOpenAPI版本与v1操作数(self) -> None:
         schema = app_module.app.openapi()
-        self.assertEqual("1.24.2", app_module.app.version)
-        self.assertEqual("1.24.2", schema["info"]["version"])
+        self.assertEqual("1.24.3", app_module.app.version)
+        self.assertEqual("1.24.3", schema["info"]["version"])
         count = sum(len(v) for key, v in schema["paths"].items() if key.startswith("/api/v1"))
         self.assertEqual(20, count)
 

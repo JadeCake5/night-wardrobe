@@ -386,10 +386,20 @@
         markDisconnected();
       };
     }
+
     ["wsLlmTimeout", "wsLlmRetries"].forEach(function (id) {
       var el = $(id);
       if (el) el.oninput = renderStatus;
     });
+    
+    // Add backdrop click to close
+    var dialog = $("wsLlmSettingsDialog");
+    if (dialog) {
+      dialog.onclick = function(e) {
+        if (e.target === dialog) dialog.close();
+      };
+    }
+
   }
 
   global.CopilotSettings = {

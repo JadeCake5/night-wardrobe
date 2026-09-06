@@ -4,6 +4,14 @@ import urllib.error
 import urllib.request
 import json
 
+# Cloudflare 等网关按 User-Agent 指纹拦截 Python-urllib（403 error code: 1010），
+# 统一伪装成桌面浏览器 UA 穿透，同时声明只接受 JSON 响应。
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
+
 
 def _post_chat(base_url: str, api_key: str, payload: dict, timeout: int) -> dict:
     """向 OpenAI 兼容的 /chat/completions 发送 POST，返回解析后的 JSON 对象。"""
@@ -13,7 +21,9 @@ def _post_chat(base_url: str, api_key: str, payload: dict, timeout: int) -> dict
         data=data,
         headers={
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "Authorization": f"Bearer {api_key}" if api_key else "",
+            "User-Agent": BROWSER_USER_AGENT,
         },
         method="POST",
     )
@@ -44,7 +54,9 @@ def chat_completion(base_url: str, api_key: str, model: str, system_prompt: str,
         data=data,
         headers={
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "Authorization": f"Bearer {api_key}" if api_key else "",
+            "User-Agent": BROWSER_USER_AGENT,
         },
         method="POST",
     )
@@ -153,7 +165,11 @@ def list_models(base_url: str, api_key: str, timeout: int = 30) -> list[str]:
         raise ValueError("请先填写 base_url")
     req = urllib.request.Request(
         f"{base_url}/models",
-        headers={"Authorization": f"Bearer {api_key}" if api_key else ""},
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_key}" if api_key else "",
+            "User-Agent": BROWSER_USER_AGENT,
+        },
         method="GET",
     )
     try:

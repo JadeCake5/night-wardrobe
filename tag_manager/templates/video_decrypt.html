@@ -201,14 +201,27 @@
     errorBox.hidden = false;
   }
 
-  const passwordToggle = document.querySelector('[data-password-toggle]');
-  if (passwordToggle && passwordInput) {
-    passwordToggle.addEventListener('click', () => {
+  function resetPasswordToggle() {
+    if (!passwordInput || passwordInput.type === 'password') return;
+    passwordInput.type = 'password';
+    const toggle = form ? form.querySelector('[data-password-toggle]') : null;
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', 'false');
+      toggle.setAttribute('aria-label', '显示密码');
+      toggle.classList.remove('is-on');
+    }
+  }
+
+  if (form) {
+    form.addEventListener('click', event => {
+      const toggle = event.target.closest('[data-password-toggle]');
+      if (!toggle || !passwordInput) return;
+      event.preventDefault();
       const show = passwordInput.type === 'password';
       passwordInput.type = show ? 'text' : 'password';
-      passwordToggle.setAttribute('aria-pressed', String(show));
-      passwordToggle.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
-      passwordToggle.classList.toggle('is-on', show);
+      toggle.setAttribute('aria-pressed', String(show));
+      toggle.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
+      toggle.classList.toggle('is-on', show);
       passwordInput.focus();
     });
   }
@@ -412,6 +425,7 @@
         if (!ok) break;
       }
       passwordInput.value = '';
+      resetPasswordToggle();
       outputNameInput.value = '';
       fileInput.value = '';
       updateFileName();
@@ -558,7 +572,11 @@
       if (retry) {
         outputNameInput.value = retry.dataset.retryOutput || '';
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        passwordInput.focus({ preventScroll: true });
+        if (passwordInput) {
+          passwordInput.value = '';
+          resetPasswordToggle();
+          passwordInput.focus({ preventScroll: true });
+        }
         toast('已回填输出名称，请重新选择 .evideo 密文并输入密码', 'warning');
         return;
       }

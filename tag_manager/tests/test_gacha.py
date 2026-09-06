@@ -124,8 +124,8 @@ class GachaStaticIntegrationTests(unittest.TestCase):
         self.assertNotIn("'Authorization'", gacha_html)
         self.assertIn('href="/gacha"', base_html)
         self.assertIn("data-full-load", base_html)
-        self.assertIn("v1.24.6", base_html)
-        self.assertIn("style.css?v=89", base_html)
+        self.assertIn("v1.24.7", base_html)
+        self.assertIn("style.css?v=90", base_html)
 
 
 if __name__ == "__main__":

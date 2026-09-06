@@ -690,7 +690,7 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 /* 工坊工具栏纯图标按钮：沿用图库 .icon-btn 视觉（v1.20.0） */
 .ws-header-actions .icon-btn, .ws-editor-actions .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: rgba(30,41,59,.82); color: #c4b5fd; cursor: pointer; transition: background .15s, border-color .15s, color .15s; box-shadow: none; }
 .ws-header-actions .icon-btn:hover, .ws-editor-actions .icon-btn:hover { background: rgba(76,29,149,.55); border-color: var(--line-hot); color: #f5f3ff; }
-.ws-copilot-btn { color: #d8b4fe; border-color: rgba(168,85,247,.4); }
+
 
 /* 主布局：配方区 + Prompt 工作区；Copilot 打开时在同一 flex 行停靠，不覆盖 */
 .ws-workbench { display: flex; align-items: stretch; gap: 0; min-height: calc(100vh - 108px); }
@@ -813,7 +813,7 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .ws-copilot-resizer:hover, .ws-workbench.is-resizing .ws-copilot-resizer { background: linear-gradient(90deg, transparent, rgba(168,85,247,.28)); }
 .ws-copilot-resizer[hidden] { display: none; }
 .ws-copilot-mask { display: none; }
-.ws-copilot-btn[aria-pressed="true"] { background: rgba(124,58,237,.28); color: #e9d5ff; border-color: rgba(168,85,247,.48); }
+.copilot-sparkle-btn[aria-pressed="true"] { background: rgba(124,58,237,.28); border-color: rgba(168,85,247,.48); }
 
 /* 输入区压低 + 顶部留白收紧，把空间让给消息列表（Island 构建产物 copilot.css 的作用域覆盖，选择器优先级更高） */
 .ws-copilot-pane #workshop-copilot-root textarea[data-copilot-input] { min-height: 60px; max-height: 150px; padding-top: 8px; padding-bottom: 4px; }
@@ -1020,3 +1020,141 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
 .icon-menu button:hover { background: rgba(76, 29, 149, .45); transform: none; box-shadow: none; }
 .icon-menu button.danger { color: #fda4af; }
 .icon-menu button.danger:hover { background: rgba(159, 18, 57, .38); transform: none; box-shadow: none; }
+
+/* Sparkle Copilot Button */
+.copilot-sparkle-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  background: rgba(30,41,59,.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.15);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.copilot-sparkle-btn:hover {
+  background: rgba(76,29,149,.55);
+  border-color: var(--line-hot);
+  transform: none; /* Must not move */
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.copilot-sparkle-badge {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: 
+    radial-gradient(ellipse 60% 45% at 50% 0%, rgba(255,255,255,0.7) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(255,255,255,0.25) 0%, transparent 60%),
+    radial-gradient(circle at 40% 40%, #5a626c 0%, #20242a 45%, #0f1115 80%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    inset 0 -1px 3px rgba(0, 0, 0, 0.9),
+    inset 0 1px 2px rgba(255, 255, 255, 0.4),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.copilot-sparkle-badge-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0px,
+    rgba(255, 255, 255, 0.03) 1px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.04) 3px,
+    transparent 4px
+  );
+  -webkit-mask: radial-gradient(circle at center, #fff 30%, transparent 95%);
+  pointer-events: none;
+}
+
+.copilot-sparkle-badge-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 
+    inset 1px 2px 3px rgba(255, 255, 255, 0.6),
+    inset -1px -2px 4px rgba(255, 255, 255, 0.7),
+    inset 0 0 1px rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.copilot-sparkle-badge-rim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 135deg,
+    transparent 0deg,
+    rgba(255, 50, 100, 0.4) 40deg,
+    rgba(255, 200, 50, 0.4) 80deg,
+    rgba(50, 255, 200, 0.4) 120deg,
+    transparent 160deg,
+    transparent 280deg,
+    rgba(100, 50, 255, 0.4) 320deg,
+    transparent 360deg
+  );
+  mix-blend-mode: overlay;
+  opacity: 0.6;
+}
+
+.copilot-sparkle-icon {
+  position: relative;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  filter: 
+    drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 0 3px rgba(255, 255, 255, 0.2));
+}
+
+.copilot-sparkle-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: #c4b5fd;
+  transition: color 0.15s;
+}
+
+.copilot-sparkle-btn:hover .copilot-sparkle-text,
+.copilot-sparkle-btn[aria-pressed="true"] .copilot-sparkle-text {
+  color: #f5f3ff;
+}
+
+.copilot-sparkle-chevron {
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+  color: #c4b5fd;
+  margin-left: -4px;
+  transition: transform 0.2s, color 0.15s;
+}
+
+.copilot-sparkle-btn[aria-pressed="true"] .copilot-sparkle-chevron {
+  transform: rotate(180deg);
+  color: #f5f3ff;
+}

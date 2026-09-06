@@ -71,11 +71,17 @@ def download_video_decrypt_job(job_id: int):
 
 
 @router.post("/video-decrypt/jobs/{job_id}/delete")
-def delete_video_decrypt_job(job_id: int):
+def delete_video_decrypt_job(job_id: int, request: Request):
+    # 浏览器表单（Accept: text/html）保持 303 重定向兜底；fetch 等客户端返回 JSON 由前端 toast 反馈
+    wants_json = "text/html" not in request.headers.get("accept", "")
     try:
         video_decrypt_service.delete_job(job_id)
     except VideoDecryptServiceError as exc:
+        if wants_json:
+            return error_response(exc)
         query = urlencode({"message": exc.message, "message_type": "error"})
         return RedirectResponse(f"/video-decrypt?{query}", status_code=303)
+    if wants_json:
+        return JSONResponse({"ok": True, "message": "视频解密任务已删除"})
     query = urlencode({"message": "视频解密任务已删除", "message_type": "success"})
     return RedirectResponse(f"/video-decrypt?{query}", status_code=303)

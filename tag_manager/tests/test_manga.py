@@ -102,12 +102,74 @@ class MangaComposerTests(unittest.TestCase):
     def test合成APNG尺寸归一化三策略(self) -> None:
         cover = make_image(self.root / "cover.png", size=(40, 60))
         odd = make_image(self.root / "odd.jpg", size=(80, 30))
+        # 画布取所有帧逐维最大尺寸：(80, 60)
         for strategy in ("pad", "stretch", "crop"):
             with self.subTest(strategy=strategy):
                 output = compose_apng(cover, [odd], self.root / f"{strategy}.png", resize=strategy)
                 with Image.open(output) as img:
-                    img.seek(1)
-                    self.assertEqual((40, 60), img.size)
+                    self.assertEqual((80, 60), img.size)
+                    for index in range(img.n_frames):
+                        img.seek(index)
+                        self.assertEqual((80, 60), img.size)
+
+    def test合成APNG小封面大页图不降低页图分辨率(self) -> None:
+        # 关键回归：首帧是小封面时，后续大页图不得被 thumbnail 缩小
+        cover = make_image(self.root / "cover.png", size=(40, 60), color=(10, 200, 10))
+        page = Image.new("RGB", (120, 180), (255, 255, 255))
+        for x in range(0, 120, 2):
+            for y in range(180):
+                page.putpixel((x, y), (0, 0, 0))
+        page_path = self.root / "page.png"
+        page.save(page_path)
+        output = compose_apng(cover, [page_path], self.root / "out" / "ani.png")
+        with Image.open(output) as img:
+            self.assertEqual((120, 180), img.size)
+            img.seek(1)
+            frame = img.convert("RGB")
+            self.assertEqual(page.tobytes(), frame.tobytes())
+
+    def test合成APNG混合分辨率画布取逐维最大(self) -> None:
+        cover = make_image(self.root / "cover.png", size=(30, 90))
+        wide = make_image(self.root / "wide.png", size=(100, 20))
+        tall = make_image(self.root / "tall.png", size=(50, 70))
+        output = compose_apng(cover, [wide, tall], self.root / "out" / "ani.png")
+        with Image.open(output) as img:
+            self.assertEqual(3, img.n_frames)
+            self.assertEqual((100, 90), img.size)
+            for index in range(img.n_frames):
+                img.seek(index)
+                self.assertEqual((100, 90), img.size)
+
+    def test合成APNG小帧pad居中留白且保持原像素(self) -> None:
+        cover = make_image(self.root / "cover.png", size=(100, 100), color=(10, 200, 10))
+        small = make_image(self.root / "small.png", size=(40, 60), color=(200, 30, 30))
+        output = compose_apng(cover, [small], self.root / "out" / "ani.png")
+        with Image.open(output) as img:
+            self.assertEqual((100, 100), img.size)
+            img.seek(1)
+            frame = img.convert("RGB")
+            # 小帧不重采样，原尺寸居中，四周为黑色留白
+            self.assertEqual((0, 0, 0), frame.getpixel((0, 0)))
+            self.assertEqual((200, 30, 30), frame.getpixel((50, 50)))
+            self.assertEqual((200, 30, 30), frame.getpixel((30, 20)))
+
+    def test合成APNGstretch策略放大首帧到画布(self) -> None:
+        cover = make_image(self.root / "cover.png", size=(40, 60), color=(10, 200, 10))
+        big = make_image(self.root / "big.png", size=(120, 180), color=(200, 30, 30))
+        output = compose_apng(cover, [big], self.root / "out" / "ani.png", resize="stretch")
+        with Image.open(output) as img:
+            self.assertEqual((120, 180), img.size)
+            img.seek(0)
+            self.assertEqual((10, 200, 10), img.convert("RGB").getpixel((60, 90)))
+
+    def test合成APNGcrop策略裁到画布宽高比(self) -> None:
+        cover = make_image(self.root / "cover.png", size=(40, 60), color=(10, 200, 10))
+        wide = make_image(self.root / "wide.png", size=(160, 60), color=(200, 30, 30))
+        output = compose_apng(cover, [wide], self.root / "out" / "ani.png", resize="crop")
+        with Image.open(output) as img:
+            self.assertEqual((160, 60), img.size)
+            img.seek(1)
+            self.assertEqual((200, 30, 30), img.convert("RGB").getpixel((80, 30)))
 
     def test合成APNG缺首帧与空帧与超上限(self) -> None:
         cover = make_image(self.root / "cover.png")
@@ -375,9 +437,9 @@ class MangaStaticContractTests(unittest.TestCase):
         base = (Path(app_module.BASE_DIR) / "templates" / "base.html").read_text(encoding="utf-8")
         self.assertIn('href="/manga"', base)
         self.assertIn("漫画下载", base)
-        self.assertIn("v1.24.13", base)
+        self.assertIn("v1.24.14", base)
         self.assertIn("style.css?v=92", base)
-        self.assertEqual("1.24.13", app_module.app.version)
+        self.assertEqual("1.24.14", app_module.app.version)
 
     def test模板包含APNG联动与轮询脚本(self) -> None:
         html = (Path(app_module.BASE_DIR) / "templates" / "manga.html").read_text(encoding="utf-8")

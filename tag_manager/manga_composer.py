@@ -63,12 +63,24 @@ def _normalize_frame(img, size, strategy: str):
             top = (img.height - new_height) // 2
             img = img.crop((0, top, img.width, top + new_height))
         return img.resize(size, Image.LANCZOS)
-    # 默认 pad：等比缩放到能放进目标尺寸，黑边居中
+    # 默认 pad：等比缩放到能放进目标尺寸，黑边居中；thumbnail 只缩不放，小图保持原尺寸不重采样
     img.thumbnail(size, Image.LANCZOS)
     canvas = Image.new("RGB", size, (0, 0, 0))
     offset = ((size[0] - img.width) // 2, (size[1] - img.height) // 2)
     canvas.paste(img, offset)
     return canvas
+
+
+def _measure_canvas_size(image_paths: list[Path]) -> tuple[int, int]:
+    """取所有帧逐维最大尺寸作为统一画布，避免小封面把大页图压低分辨率。"""
+    from PIL import Image
+
+    width = height = 0
+    for path in image_paths:
+        with Image.open(path) as img:
+            width = max(width, img.width)
+            height = max(height, img.height)
+    return width, height
 
 
 def compose_apng(
@@ -99,13 +111,10 @@ def compose_apng(
     loop = max(0, int(loop))
 
     try:
-        base = Image.open(first_frame)
-        base.load()
-        if base.mode not in ("RGB", "RGBA"):
-            base = base.convert("RGB")
-        size = base.size
+        all_paths = [Path(first_frame), *frame_paths]
+        size = _measure_canvas_size(all_paths)
         frames = []
-        for path in frame_paths:
+        for path in all_paths:
             with Image.open(path) as img:
                 img.load()
                 frames.append(_normalize_frame(img, size, resize))
@@ -116,11 +125,11 @@ def compose_apng(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        base.save(
+        frames[0].save(
             output_path,
             format="PNG",
             save_all=True,
-            append_images=frames,
+            append_images=frames[1:],
             duration=durations,
             loop=loop,
             disposal=0,

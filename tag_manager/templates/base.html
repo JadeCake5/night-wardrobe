@@ -11,7 +11,7 @@
     <aside class="app-sidebar">
       <a class="brand" href="/">
         <span class="brand-mark">NW</span>
-        <span class="brand-copy">夜之主衣柜 <small>v1.25.0</small></span>
+        <span class="brand-copy">夜之主衣柜 <small>v1.25.1</small></span>
       </a>
       <nav class="side-nav" data-main-nav aria-label="主导航">
         <a class="nav-item" href="/tags" title="Tag 库">
@@ -105,13 +105,20 @@
     }
 
     function showOverlay() {
-      overlay.style.opacity = '1';
-      overlay.style.pointerEvents = 'auto';
+      overlay.classList.add('active');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'auto';
+      }));
     }
 
     function hideOverlay() {
       overlay.style.opacity = '0';
       overlay.style.pointerEvents = 'none';
+      overlay.addEventListener('transitionend', function handler() {
+        overlay.removeEventListener('transitionend', handler);
+        overlay.classList.remove('active');
+      });
     }
 
     async function navigate(url, pushState) {
@@ -182,9 +189,16 @@
           if (data && data.status === 'behind' && data.remote_version) {
             document.getElementById('sys-update-title').textContent = '发现新版本 v' + data.remote_version;
             const toast = document.getElementById('sys-update-toast');
-            toast.classList.add('show');
+            toast.style.display = 'block';
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+              toast.classList.add('show');
+            }));
             setTimeout(() => {
               toast.classList.remove('show');
+              toast.addEventListener('transitionend', function handler() {
+                toast.removeEventListener('transitionend', handler);
+                toast.style.display = 'none';
+              });
             }, 5000);
           }
         })

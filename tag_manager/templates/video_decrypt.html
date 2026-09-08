@@ -298,9 +298,11 @@
     if (!fresh || !current) return;
     const html = fresh.innerHTML;
     // 内容无变化时不触碰 DOM，避免列表闪烁与焦点丢失
-    if (html === (lastJobsHtml !== null ? lastJobsHtml : current.innerHTML)) return;
-    current.innerHTML = html;
-    lastJobsHtml = html;
+    if (html !== (lastJobsHtml !== null ? lastJobsHtml : current.innerHTML)) {
+      current.innerHTML = html;
+      lastJobsHtml = html;
+    }
+    startPollingIfNeeded();
   }
 
   function ensureJobList() {
@@ -592,18 +594,34 @@
     });
   }
 
+  function hasActiveJobs() {
+    return [...document.querySelectorAll('[data-video-job-id]')]
+      .some(item => ['uploading', 'queued', 'running'].includes(item.dataset.videoJobStatus));
+  }
+
+  function startPollingIfNeeded() {
+    if (!pollTimer && !document.hidden && hasActiveJobs()) {
+      pollTimer = window.setTimeout(pollTick, pollDelay);
+    }
+  }
+
   async function pollTick() {
-    if (!document.hidden) await pollJobs();
-    pollTimer = window.setTimeout(pollTick, pollDelay);
+    if (document.hidden) { pollTimer = null; return; }
+    await pollJobs();
+    pollTimer = null;
+    startPollingIfNeeded();
   }
 
   function onVisibilityChange() {
-    if (pollTimer) window.clearTimeout(pollTimer);
-    if (!document.hidden) pollTick();
+    if (document.hidden) {
+      if (pollTimer) { window.clearTimeout(pollTimer); pollTimer = null; }
+    } else {
+      startPollingIfNeeded();
+    }
   }
 
   document.addEventListener('visibilitychange', onVisibilityChange);
-  pollTimer = window.setTimeout(pollTick, pollDelay);
+  startPollingIfNeeded();
   window.__wardrobePageCleanup = () => {
     if (pollTimer) window.clearTimeout(pollTimer);
     if (xhr && xhr.readyState !== XMLHttpRequest.DONE) xhr.abort();

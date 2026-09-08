@@ -230,14 +230,31 @@
   const drawer = $('mangaDrawer');
   const drawerMask = $('mangaDrawerMask');
   function setDrawer(open) {
-    drawer.classList.toggle('open', open);
-    drawerMask.classList.toggle('open', open);
+    if (open) {
+      drawer.style.display = 'block';
+      drawerMask.style.display = 'block';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        drawer.classList.add('open');
+        drawerMask.classList.add('open');
+      }));
+    } else {
+      drawer.classList.remove('open');
+      drawerMask.classList.remove('open');
+      drawer.addEventListener('transitionend', function handler() {
+        drawer.removeEventListener('transitionend', handler);
+        if (!drawer.classList.contains('open')) {
+          drawer.style.display = 'none';
+          drawerMask.style.display = 'none';
+        }
+      });
+    }
   }
+  const handleEscape = e => { if (e.key === 'Escape') setDrawer(false); };
   if (drawer && drawerMask) {
     $('mangaSettingsBtn').addEventListener('click', () => setDrawer(true));
     $('mangaDrawerClose').addEventListener('click', () => setDrawer(false));
     drawerMask.addEventListener('click', () => setDrawer(false));
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') setDrawer(false); });
+    document.addEventListener('keydown', handleEscape);
   }
 
   const formatSelect = $('mangaFormat');
@@ -253,6 +270,14 @@
     syncFormat();
   }
 
+  function startPollingIfNeeded() {
+    const active = [...document.querySelectorAll('[data-manga-job-id]')]
+      .filter(item => ['queued', 'running'].includes(item.dataset.mangaJobStatus));
+    if (active.length && !pollTimer) {
+      pollTimer = window.setInterval(pollJobs, 1000);
+    }
+  }
+
   async function refreshJobs() {
     try {
       const response = await fetch('/manga');
@@ -262,6 +287,7 @@
       const fresh = doc.querySelector('.manga-jobs');
       const current = document.querySelector('.manga-jobs');
       if (fresh && current) current.innerHTML = fresh.innerHTML;
+      startPollingIfNeeded();
     } catch (_) {}
   }
 
@@ -323,7 +349,10 @@
   async function pollJobs() {
     const active = [...document.querySelectorAll('[data-manga-job-id]')]
       .filter(item => ['queued', 'running'].includes(item.dataset.mangaJobStatus));
-    if (!active.length) return;
+    if (!active.length) {
+      if (pollTimer) { window.clearInterval(pollTimer); pollTimer = 0; }
+      return;
+    }
     let finished = false;
     for (const item of active) {
       try {
@@ -356,11 +385,13 @@
     });
   }
 
-  pollTimer = window.setInterval(pollJobs, 1000);
+  startPollingIfNeeded();
+  
   window.__wardrobePageCleanup = () => {
-    if (pollTimer) window.clearInterval(pollTimer);
+    if (pollTimer) { window.clearInterval(pollTimer); pollTimer = 0; }
     activeXhrs.forEach(xhr => { if (xhr.readyState !== XMLHttpRequest.DONE) xhr.abort(); });
     activeXhrs.clear();
+    document.removeEventListener('keydown', handleEscape);
     window.__wardrobePageCleanup = null;
   };
 })();

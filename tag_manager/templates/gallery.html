@@ -334,6 +334,13 @@ function copyField(id) {
   });
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+var galleryKeydownHandler = e => { if (e.key === 'Escape') closeLightbox(); };
+document.addEventListener('keydown', galleryKeydownHandler);
+
+if (typeof window.__wardrobePageCleanup === 'function') window.__wardrobePageCleanup();
+window.__wardrobePageCleanup = () => {
+  document.removeEventListener('keydown', galleryKeydownHandler);
+  window.__wardrobePageCleanup = null;
+};
 </script>
 {% endblock %}

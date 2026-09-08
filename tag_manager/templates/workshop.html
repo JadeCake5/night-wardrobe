@@ -846,11 +846,16 @@ window.__wardrobePageCleanup = function () {
   document.removeEventListener('click', onDocClick);
   document.removeEventListener('keydown', onEscKey);
   if (window.WorkshopCopilot && window.WorkshopCopilot.destroy) window.WorkshopCopilot.destroy();
+  window.WorkshopAPI = undefined;
+  window.__wardrobePageCleanup = null;
 };
 
 restoreWorkshopState();
-// 页面加载完成后二次执行，确保浏览器表单状态恢复后再次套用应用状态
-window.addEventListener('load', restoreWorkshopState, { once: true });
+if (document.readyState === 'complete') {
+  restoreWorkshopState();
+} else {
+  window.addEventListener('load', restoreWorkshopState, { once: true });
+}
 if (window.WorkshopCopilot && window.WorkshopCopilot.init) {
   window.WorkshopCopilot.init({
     workbench: document.getElementById('wsWorkbench'),

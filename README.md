@@ -2,7 +2,7 @@
 
 Stable Diffusion / ComfyUI 提示词管理工具。从魔导书 Excel 批量导入 tag，按分类浏览、挑选、组合提示词，管理带工作流的图库案例。
 
-当前版本：**v1.24.14**
+当前版本：**v1.24.15**
 
 ## 功能
 
@@ -197,6 +197,10 @@ Excel 格式要求：
 - openpyxl（Excel 读取）
 
 ## 更新日志
+
+### v1.24.15
+
+GitHub 同步更新：侧边栏新增「检查更新」入口与 /update 页面，一键从公开仓 JadeCake5/night-wardrobe 拉取最新版。检查接口从远程 README 解析「当前版本」与本地比较，落后时展示远程版本并提供「立即更新」按钮；更新接口从 codeload 下载 zip 到临时目录，只覆盖 zip 内 tag_manager 子树中存在的代码文件，本地多余文件不删除；数据黑名单（tag_wardrobe.sqlite3、gallery、workflows、manga、manga_downloads、manga_config.json、tag_library.json、.venv、__pycache__、视频输出目录）写死绝不触碰；先备份将被覆盖的本地文件再写入，任一环节失败自动回滚并返回清晰中文错误；网络超时 15/30 秒，复用漫画下载的代理配置，zip 解压防路径穿越。补版本解析、版本比较、黑白名单、zip-slip、回滚、路由契约测试（全部 mock 网络）。更新完成后提示手动重启生效。OpenAPI 应用元数据已同步为 **v1.24.15**
 
 ### v1.24.14
 

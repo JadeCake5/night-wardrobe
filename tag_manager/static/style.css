@@ -1386,3 +1386,33 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
   line-height: 1.6;
   padding: 0;
 }
+
+.update-version-grid {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 16px;
+}
+.update-version-item {
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 18px;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 14px;
+  background: rgba(15,23,42,.35);
+}
+.update-version-item span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+.update-version-item strong {
+  font-size: 20px;
+  color: #e2e8f0;
+}
+.update-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}

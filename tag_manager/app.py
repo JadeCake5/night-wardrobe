@@ -51,17 +51,19 @@ from .lora_routes import router as lora_router
 from .manga_routes import router as manga_router
 from .manga_service import manga_service
 from .tag_api import router as tag_api_router
+from .update_routes import router as update_router
 from .video_decrypt_routes import router as video_decrypt_router
 from .video_decrypt_service import video_decrypt_service
 from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, import_workflows_zip, save_workflow_bytes, scan_workflows
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.24.14")
+app = FastAPI(title="夜之主衣柜", version="1.24.15")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
 app.include_router(manga_router)
+app.include_router(update_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

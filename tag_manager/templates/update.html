@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="update-page">
+  <header class="video-decrypt-hero">
+    <div>
+      <span class="video-decrypt-eyebrow">GITHUB SYNC</span>
+      <h1>检查更新</h1>
+      <p class="page-hint">从公开仓 JadeCake5/night-wardrobe 拉取最新版，覆盖本地代码文件；用户数据与下载内容不受影响。</p>
+    </div>
+    <div class="runtime-card" data-update-hero-card>
+      <strong data-update-hero-title>尚未检查</strong>
+      <span data-update-hero-message>点击下方按钮检查远程版本</span>
+    </div>
+  </header>
+
+  <section class="panel-card">
+    <div class="section-heading">
+      <div>
+        <h2>版本信息</h2>
+        <p>更新完成后需手动重启应用才会加载新版本。</p>
+      </div>
+      <span class="queue-badge" data-update-badge>未检查</span>
+    </div>
+    <div class="update-version-grid">
+      <div class="update-version-item">
+        <span>当前版本</span>
+        <strong>v{{ current_version }}</strong>
+      </div>
+      <div class="update-version-item">
+        <span>远程版本</span>
+        <strong data-update-remote>—</strong>
+      </div>
+    </div>
+    <p class="form-error" data-update-error role="alert" hidden></p>
+    <div class="update-actions">
+      <button type="button" class="video-decrypt-submit" data-update-check>检查更新</button>
+      <button type="button" class="video-retry-button" data-update-apply hidden>立即更新</button>
+    </div>
+  </section>
+</section>
+
+<script>
+(() => {
+  if (typeof window.__wardrobePageCleanup === 'function') window.__wardrobePageCleanup();
+
+  const checkButton = document.querySelector('[data-update-check]');
+  const applyButton = document.querySelector('[data-update-apply]');
+  const remoteEl = document.querySelector('[data-update-remote]');
+  const badgeEl = document.querySelector('[data-update-badge]');
+  const errorEl = document.querySelector('[data-update-error]');
+  const heroCard = document.querySelector('[data-update-hero-card]');
+  const heroTitle = document.querySelector('[data-update-hero-title]');
+  const heroMessage = document.querySelector('[data-update-hero-message]');
+  let busy = false;
+
+  function toast(message, type) {
+    let el = document.querySelector('.ws-toast');
+    if (!el) {
+      el = document.createElement('div');
+      document.body.appendChild(el);
+    }
+    el.className = 'ws-toast' + (type ? ' ws-toast-' + type : '');
+    el.textContent = message;
+    el.classList.add('show');
+    window.setTimeout(() => el.classList.remove('show'), type === 'error' ? 2600 : 1600);
+  }
+
+  function setBusy(value) {
+    busy = value;
+    if (checkButton) checkButton.disabled = value;
+    if (applyButton) applyButton.disabled = value;
+  }
+
+  function showError(message) {
+    if (!errorEl) return;
+    if (message) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    } else {
+      errorEl.hidden = true;
+    }
+  }
+
+  function renderCheck(data) {
+    if (remoteEl) remoteEl.textContent = data.remote_version ? 'v' + data.remote_version : '—';
+    if (badgeEl) badgeEl.textContent = data.status_label;
+    if (heroTitle) heroTitle.textContent = data.status_label;
+    if (heroMessage) heroMessage.textContent = data.message;
+    if (heroCard) {
+      heroCard.classList.toggle('is-ready', data.status === 'latest');
+      heroCard.classList.toggle('is-error', data.status === 'unknown');
+    }
+    if (applyButton) applyButton.hidden = data.status !== 'behind';
+  }
+
+  async function check() {
+    showError('');
+    setBusy(true);
+    if (heroTitle) heroTitle.textContent = '正在检查…';
+    try {
+      const response = await fetch('/api/update/check');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || `检查失败：HTTP ${response.status}`);
+      renderCheck(data);
+      toast(data.message, data.status === 'unknown' ? 'error' : 'success');
+    } catch (exc) {
+      const message = exc instanceof Error ? exc.message : String(exc);
+      showError(message);
+      toast(message, 'error');
+      if (heroTitle) heroTitle.textContent = '检查失败';
+      if (heroMessage) heroMessage.textContent = message;
+      if (heroCard) heroCard.classList.add('is-error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function apply() {
+    showError('');
+    setBusy(true);
+    if (heroTitle) heroTitle.textContent = '正在更新…';
+    if (heroMessage) heroMessage.textContent = '正在下载并覆盖代码文件，请勿关闭页面';
+    try {
+      const response = await fetch('/api/update/apply', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || `更新失败：HTTP ${response.status}`);
+      renderCheck({
+        status: 'latest',
+        status_label: '更新完成',
+        message: data.message,
+        remote_version: '',
+      });
+      toast(data.message, 'success');
+    } catch (exc) {
+      const message = exc instanceof Error ? exc.message : String(exc);
+      showError(message);
+      toast(message, 'error');
+      if (heroTitle) heroTitle.textContent = '更新失败';
+      if (heroMessage) heroMessage.textContent = message;
+      if (heroCard) heroCard.classList.add('is-error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (checkButton) checkButton.addEventListener('click', () => { if (!busy) check(); });
+  if (applyButton) applyButton.addEventListener('click', () => { if (!busy) apply(); });
+})();
+</script>
+{% endblock %}

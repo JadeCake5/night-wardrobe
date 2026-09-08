@@ -1416,3 +1416,17 @@ a.gallery-breadcrumb-item:hover, a.gallery-breadcrumb-item:focus-visible { color
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* 更新提醒弹框 */
+.update-toast { position: fixed; top: 20px; right: 20px; z-index: 2000; width: 280px; padding: 12px 16px; border: 1px solid var(--line-hot); border-radius: 8px; background: var(--panel-strong); color: var(--text); box-shadow: 0 10px 28px rgba(0,0,0,.4); opacity: 0; transform: translateY(-10px); pointer-events: none; transition: opacity .3s, transform .3s; overflow: hidden; }
+.update-toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.update-toast-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; font-weight: 600; color: #fff; }
+.update-toast-close { cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+.update-toast-close:hover { color: #fff; }
+.update-toast-body { font-size: 13px; color: var(--muted); }
+.update-toast-body a { color: #a855f7; text-decoration: none; }
+.update-toast-body a:hover { text-decoration: underline; }
+.update-toast-progress { position: absolute; bottom: 0; left: 0; height: 3px; background: #a855f7; width: 100%; }
+.update-toast.show .update-toast-progress { animation: updateToastProgress 5s linear forwards; }
+@keyframes updateToastProgress { from { width: 100%; } to { width: 0; } }
+

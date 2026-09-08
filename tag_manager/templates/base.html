@@ -11,7 +11,7 @@
     <aside class="app-sidebar">
       <a class="brand" href="/">
         <span class="brand-mark">NW</span>
-        <span class="brand-copy">夜之主衣柜 <small>v1.24.15</small></span>
+        <span class="brand-copy">夜之主衣柜 <small>v1.25.0</small></span>
       </a>
       <nav class="side-nav" data-main-nav aria-label="主导航">
         <a class="nav-item" href="/tags" title="Tag 库">
@@ -158,6 +158,38 @@
 
     updateActiveNav(location.pathname);
   })();
+  </script>
+
+  <div id="sys-update-toast" class="update-toast">
+    <div class="update-toast-header">
+      <span id="sys-update-title">发现新版本</span>
+      <span class="update-toast-close" onclick="document.getElementById('sys-update-toast').classList.remove('show')">×</span>
+    </div>
+    <div class="update-toast-body">
+      <a href="/update" id="sys-update-link">前往更新页</a>
+    </div>
+    <div class="update-toast-progress"></div>
+  </div>
+
+  <script>
+    (function checkUpdateOnStartup() {
+      if (sessionStorage.getItem('update_checked_once')) return;
+      sessionStorage.setItem('update_checked_once', '1');
+
+      fetch('/api/update/check')
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.status === 'behind' && data.remote_version) {
+            document.getElementById('sys-update-title').textContent = '发现新版本 v' + data.remote_version;
+            const toast = document.getElementById('sys-update-toast');
+            toast.classList.add('show');
+            setTimeout(() => {
+              toast.classList.remove('show');
+            }, 5000);
+          }
+        })
+        .catch(() => {}); // silent catch
+    })();
   </script>
 </body>
 </html>

@@ -23,7 +23,7 @@ from tag_manager.update_service import (
 REMOTE_README = """# night-wardrobe
 
 一些说明文字
-当前版本：**v1.24.15**
+当前版本：**v1.25.0**
 其他内容
 """
 
@@ -46,7 +46,7 @@ def fake_download(zip_path: Path):
 
 class VersionParseTests(unittest.TestCase):
     def test从README解析远程版本(self) -> None:
-        self.assertEqual("1.24.15", parse_remote_version(REMOTE_README))
+        self.assertEqual("1.25.0", parse_remote_version(REMOTE_README))
 
     def test解析容忍v前缀与空白(self) -> None:
         text = "当前版本：** v2.0.0 **\n"
@@ -60,21 +60,21 @@ class VersionParseTests(unittest.TestCase):
 
 class VersionCompareTests(unittest.TestCase):
     def test落后返回负一(self) -> None:
-        self.assertEqual(-1, compare_versions("1.24.14", "1.24.15"))
+        self.assertEqual(-1, compare_versions("1.24.14", "1.25.0"))
 
     def test相等返回零(self) -> None:
         self.assertEqual(0, compare_versions("1.24.14", "1.24.14"))
 
     def test领先返回正一(self) -> None:
-        self.assertEqual(1, compare_versions("1.24.15", "1.24.14"))
+        self.assertEqual(1, compare_versions("1.25.0", "1.24.14"))
 
     def test跨位比较(self) -> None:
         self.assertEqual(-1, compare_versions("1.9.0", "2.0.0"))
         self.assertEqual(1, compare_versions("1.24.10", "1.24.9"))
 
     def test格式非法视为相等(self) -> None:
-        self.assertEqual(0, compare_versions("", "1.24.15"))
-        self.assertEqual(0, compare_versions("abc", "1.24.15"))
+        self.assertEqual(0, compare_versions("", "1.25.0"))
+        self.assertEqual(0, compare_versions("abc", "1.25.0"))
 
 
 class PathGuardTests(unittest.TestCase):
@@ -116,12 +116,12 @@ class CheckUpdateTests(unittest.TestCase):
         )
         result = service.check()
         self.assertEqual("behind", result["status"])
-        self.assertEqual("1.24.15", result["remote_version"])
+        self.assertEqual("1.25.0", result["remote_version"])
         self.assertIn("1.24.14", result["current_version"])
 
     def test已是最新版本(self) -> None:
         service = GithubUpdateService(
-            current_version="1.24.15",
+            current_version="1.25.0",
             fetch_text=lambda url, timeout: REMOTE_README,
         )
         result = service.check()
@@ -129,7 +129,7 @@ class CheckUpdateTests(unittest.TestCase):
 
     def test本地领先远程(self) -> None:
         service = GithubUpdateService(
-            current_version="1.25.0",
+            current_version="1.26.0",
             fetch_text=lambda url, timeout: REMOTE_README,
         )
         result = service.check()
@@ -304,7 +304,7 @@ class UpdateRouteTests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         data = response.json()
         self.assertEqual("behind", data["status"])
-        self.assertEqual("1.24.15", data["remote_version"])
+        self.assertEqual("1.25.0", data["remote_version"])
         self.assertEqual("1.24.14", data["current_version"])
 
     def test更新接口成功返回文件摘要(self) -> None:
@@ -349,6 +349,32 @@ class UpdateRouteTests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertIn('href="/update"', response.text)
 
+    def test检查接口短缓存(self) -> None:
+        service = GithubUpdateService(
+            current_version="1.24.14",
+            fetch_text=lambda url, timeout: REMOTE_README,
+        )
+        update_routes._update_cache = {"result": None, "timestamp": 0.0}
+        with patch.object(update_routes, "_build_service", return_value=service) as mock_build:
+            res1 = self.client.get("/api/update/check")
+            self.assertEqual(200, res1.status_code)
+            self.assertEqual(1, mock_build.call_count)
+            
+            res2 = self.client.get("/api/update/check")
+            self.assertEqual(200, res2.status_code)
+            self.assertEqual(1, mock_build.call_count)
+            
+            update_routes._update_cache["timestamp"] -= 61
+            res3 = self.client.get("/api/update/check")
+            self.assertEqual(200, res3.status_code)
+            self.assertEqual(2, mock_build.call_count)
+
+    def test前端启动时更新检查与弹框渲染(self) -> None:
+        base_html = (Path(app_module.BASE_DIR) / "templates" / "base.html").read_text(encoding="utf-8")
+        self.assertIn("fetch('/api/update/check')", base_html)
+        self.assertIn("sessionStorage.getItem('update_checked_once')", base_html)
+        self.assertIn('id="sys-update-toast"', base_html)
+        self.assertIn('class="update-toast-progress"', base_html)
 
 if __name__ == "__main__":
     unittest.main()

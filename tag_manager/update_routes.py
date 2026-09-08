@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -41,10 +43,20 @@ def update_page(request: Request):
     )
 
 
+_update_cache = {"result": None, "timestamp": 0.0}
+
 @router.get("/api/update/check")
 def check_update():
+    global _update_cache
+    now = time.time()
+    if _update_cache["result"] is not None and now - _update_cache["timestamp"] < 60:
+        return _update_cache["result"]
+
     service = _build_service()
-    return service.check()
+    res = service.check()
+    _update_cache["result"] = res
+    _update_cache["timestamp"] = now
+    return res
 
 
 @router.post("/api/update/apply")

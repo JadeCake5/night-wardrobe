@@ -2,7 +2,7 @@
 
 Stable Diffusion / ComfyUI 提示词管理工具。从魔导书 Excel 批量导入 tag，按分类浏览、挑选、组合提示词，管理带工作流的图库案例。
 
-当前版本：**v1.25.1**
+当前版本：**v1.26.0**
 
 ## 功能
 
@@ -197,6 +197,13 @@ Excel 格式要求：
 - openpyxl（Excel 读取）
 
 ## 更新日志
+
+### v1.26.0
+
+- SPA 导航新增 AbortController 与导航序号：新导航取消旧请求，晚到的旧响应直接丢弃不再全量替换；导航进行中忽略同链接重复点击
+- heavy 页面检测改声明式：大页面模板在 <main> 上声明 data-heavy，取消导航前 querySelectorAll('*') 全树扫描
+- 角色卡与 LoRA 库列表分页：后端 LIMIT 上限 + 前端「加载更多」追加批次，首屏不再渲染全量卡片
+- 图库 Lightbox 详情按需加载：新增 /api/gallery/{id} 单条详情接口，列表页不再内联全部提示词/参数/metadata
 
 ### v1.25.1
 

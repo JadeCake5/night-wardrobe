@@ -543,11 +543,15 @@ def upsert_lora_card(
         return row["id"] if row else 0
 
 
-def list_lora_cards(connect_factory=connect) -> list[dict]:
+def list_lora_cards(connect_factory=connect, offset: int = 0, limit: int | None = None) -> list[dict]:
+    # limit 为 None 时不限批次（旧调用方）；分页调用方传 offset/limit，多取一行探测 has_more
+    query = "SELECT * FROM lora_cards ORDER BY updated_at DESC, id DESC"
+    params: list[int] = []
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params = [limit, max(0, offset)]
     with connect_factory() as conn:
-        rows = conn.execute(
-            "SELECT * FROM lora_cards ORDER BY updated_at DESC, id DESC"
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
     return [dict(row) for row in rows]
 
 

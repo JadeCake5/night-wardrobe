@@ -282,6 +282,8 @@ body.tag-drawer-expanded .app-main { padding-left: calc(var(--tag-drawer-width, 
 .btn-danger { color: #fecaca; border-color: rgba(248,113,113,.45); background: rgba(127,29,29,.24); }
 .btn-danger:hover { background: rgba(127,29,29,.55); border-color: rgba(248,113,113,.7); }
 .empty-hint { color: #64748b; text-align: center; padding: 40px; border: 1px dashed rgba(148,163,184,.18); border-radius: 18px; background: rgba(15,23,42,.32); }
+.load-more-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 18px 0 6px; }
+.load-more-count { color: #64748b; font-size: 13px; }
 
 /* ─── 悬浮窗（新版通用） ─── */
 .floating-panel { position: fixed; z-index: 1000; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 380px; max-height: 80vh; overflow-y: auto; background: #1c1925; border: 1px solid #4a3f5f; border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.5); flex-direction: column; }

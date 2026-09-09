@@ -39,6 +39,23 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 LORA_PREVIEW_DIR = BASE_DIR / "lora_previews"
 PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 HEADER_B64_LIMIT = 64 * 1024 * 1024  # header base64 上限 64MB，正常仅几 KB~几 MB
+LORA_PAGE_LIMIT = 60
+LORA_PAGE_MAX_LIMIT = 200
+
+
+def _clamp_lora_page(offset: int, limit: int) -> tuple[int, int]:
+    return max(0, offset), LORA_PAGE_LIMIT if limit <= 0 else max(20, min(limit, LORA_PAGE_MAX_LIMIT))
+
+
+def get_lora_page(offset: int = 0, limit: int = LORA_PAGE_LIMIT):
+    """LoRA 卡分页数据：/loras 首屏与 /api/loras/page 共用同一查询路径。
+
+    多取一行探测 has_more，分页批次不再执行 COUNT。
+    """
+    offset, limit = _clamp_lora_page(offset, limit)
+    cards = list_lora_cards(offset=offset, limit=limit + 1)
+    has_more = len(cards) > limit
+    return cards[:limit], offset + min(len(cards), limit), has_more, limit
 
 
 class LoraParsePayload(BaseModel):
@@ -60,12 +77,26 @@ def _lora_name(filename: str) -> str:
 
 
 @router.get("/loras", response_class=HTMLResponse)
-def loras_page(request: Request, message: str = "", message_type: str = ""):
+def loras_page(request: Request, message: str = "", message_type: str = "", offset: int = 0, limit: int = LORA_PAGE_LIMIT):
+    cards, next_offset, has_more, page_limit = get_lora_page(offset, limit)
     return templates.TemplateResponse(
         request,
         "loras.html",
-        {"cards": list_lora_cards(), "message": message, "message_type": message_type},
+        {
+            "cards": cards,
+            "message": message,
+            "message_type": message_type,
+            "has_more": has_more,
+            "next_offset": next_offset,
+            "page_limit": page_limit,
+        },
     )
+
+
+@router.get("/api/loras/page")
+def api_loras_page(offset: int = 0, limit: int = LORA_PAGE_LIMIT):
+    cards, next_offset, has_more, page_limit = get_lora_page(offset, limit)
+    return {"rows": cards, "next_offset": next_offset, "has_more": has_more, "limit": page_limit}
 
 
 @router.post("/api/loras/parse")

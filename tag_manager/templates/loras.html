@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block main_attrs %} data-heavy{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>LoRA 库</h1>
@@ -72,6 +73,14 @@
   </div>
   {% endfor %}
 </div>
+
+{% if has_more %}
+<div class="load-more-bar">
+  <button type="button" class="btn-sm" id="loadMoreLoras"
+          data-next-offset="{{ next_offset }}" data-limit="{{ page_limit }}">加载更多</button>
+  <span class="load-more-count">已加载 <b id="lorasLoadedCount">{{ next_offset }}</b> 张 LoRA 卡</span>
+</div>
+{% endif %}
 
 <script>
 // 只把 safetensors header（8 字节长度 + JSON）过网，大文件本体不上传
@@ -155,13 +164,16 @@ function copyLoraTriggers(btn) {
   });
 }
 
-// 标签频率 JSON 渲染为可读列表
-document.querySelectorAll('.lora-tag-freq').forEach(el => {
-  try {
-    const data = JSON.parse(el.dataset.tagFrequency || '{}');
-    el.textContent = Object.entries(data).map(([tag, count]) => `${tag} × ${count}`).join('\n');
-  } catch (e) { el.textContent = ''; }
-});
+// 标签频率 JSON 渲染为可读列表（scope 限定新增片段，避免重复扫描整页）
+function renderLoraTagFreq(scope) {
+  (scope || document).querySelectorAll('.lora-tag-freq').forEach(el => {
+    try {
+      const data = JSON.parse(el.dataset.tagFrequency || '{}');
+      el.textContent = Object.entries(data).map(([tag, count]) => `${tag} × ${count}`).join('\n');
+    } catch (e) { el.textContent = ''; }
+  });
+}
+renderLoraTagFreq(document);
 
 var uploadBox = document.getElementById('loraUpload');
 var fileInput = document.getElementById('loraFileInput');
@@ -177,5 +189,89 @@ uploadBox.addEventListener('drop', e => {
   uploadLoraFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', () => uploadLoraFiles(fileInput.files));
+</script>
+
+<script>
+// 「加载更多」分页：首屏服务端渲染一页，后续批次经 /api/loras/page 追加
+(function() {
+  var loadMoreBtn = document.getElementById('loadMoreLoras');
+  if (!loadMoreBtn) return;
+  var grid = document.querySelector('.lora-grid');
+  var loadingMore = false;
+
+  function escapeHTML(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch];
+    });
+  }
+
+  function loraCardHTML(card) {
+    var id = Number(card.id);
+    var preview = card.preview_image
+      ? `<img src="/lora-previews/${escapeHTML(card.preview_image)}" alt="${escapeHTML(card.name)}" loading="lazy">`
+      : '<div class="lora-card-placeholder">LoRA</div>';
+    var badgeClass = String(card.base_model || '').toLowerCase().replace(/\./g, '-');
+    var dim = card.net_dim ? `<span>dim ${escapeHTML(card.net_dim)}</span>` : '';
+    var triggers = card.trigger_words
+      ? `<div class="lora-card-triggers"><code>${escapeHTML(card.trigger_words)}</code><button type="button" class="btn-sm" onclick="copyLoraTriggers(this)" data-triggers="${escapeHTML(card.trigger_words)}">复制触发词</button></div>`
+      : '<p class="lora-card-no-trigger">未解析到触发词</p>';
+    var civitai = card.civitai_text ? `<details class="lora-card-details"><summary>Civitai 描述</summary><p>${escapeHTML(card.civitai_text)}</p></details>` : '';
+    var freq = card.tag_frequency ? `<details class="lora-card-details"><summary>标签频率 Top</summary><pre class="lora-tag-freq" data-tag-frequency="${escapeHTML(card.tag_frequency)}"></pre></details>` : '';
+    var notes = card.notes ? `<p class="lora-card-notes">${escapeHTML(card.notes)}</p>` : '';
+    return `<div class="lora-card" data-lora-id="${id}">
+    <div class="lora-card-preview">
+      ${preview}
+      <span class="lora-badge lora-badge-${escapeHTML(badgeClass)}">${escapeHTML(card.base_model)}</span>
+    </div>
+    <div class="lora-card-body">
+      <h3 title="${escapeHTML(card.filename || '')}">${escapeHTML(card.name)}</h3>
+      <div class="lora-card-meta">
+        ${dim}
+        <span>权重 ${Number(card.suggested_weight).toFixed(2)}</span>
+      </div>
+      ${triggers}
+      ${civitai}
+      ${freq}
+      ${notes}
+      <div class="lora-card-actions">
+        <label class="btn-sm lora-preview-btn">
+          传预览图
+          <input type="file" accept=".png,.jpg,.jpeg,.webp" hidden onchange="uploadLoraPreview(this, ${id})">
+        </label>
+        <form method="post" action="/loras/${id}/delete" onsubmit="return confirm('删除 LoRA 卡「${escapeHTML(card.name)}」？（不删除本地文件）')">
+          <button type="submit" class="btn-sm btn-danger">删除</button>
+        </form>
+      </div>
+    </div>
+  </div>`;
+  }
+
+  async function loadMoreLoras() {
+    if (loadingMore) return;
+    loadingMore = true;
+    loadMoreBtn.disabled = true;
+    try {
+      var params = new URLSearchParams();
+      params.set('offset', loadMoreBtn.dataset.nextOffset);
+      params.set('limit', loadMoreBtn.dataset.limit);
+      var resp = await fetch('/api/loras/page?' + params.toString());
+      if (!resp.ok) return;
+      var data = await resp.json();
+      if (!data.rows.length) { loadMoreBtn.closest('.load-more-bar').remove(); return; }
+      var tpl = document.createElement('template');
+      tpl.innerHTML = data.rows.map(loraCardHTML).join('');
+      grid.appendChild(tpl.content);
+      renderLoraTagFreq(grid);
+      loadMoreBtn.dataset.nextOffset = String(data.next_offset);
+      document.getElementById('lorasLoadedCount').textContent = String(data.next_offset);
+      if (!data.has_more) loadMoreBtn.closest('.load-more-bar').remove();
+    } finally {
+      loadingMore = false;
+      if (loadMoreBtn.isConnected) loadMoreBtn.disabled = false;
+    }
+  }
+
+  loadMoreBtn.addEventListener('click', loadMoreLoras);
+})();
 </script>
 {% endblock %}

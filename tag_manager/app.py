@@ -58,7 +58,7 @@ from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, 
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.25.1")
+app = FastAPI(title="夜之主衣柜", version="1.26.0")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
@@ -537,6 +537,28 @@ def gallery(
     )
 
 
+@app.get("/api/gallery/{image_id}")
+def api_gallery_image(image_id: int):
+    """Lightbox 按需详情：单条图片的提示词/参数/metadata，不再随列表页内联下发。"""
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM gallery_images WHERE id=?", (image_id,)).fetchone()
+    if row is None:
+        return JSONResponse({"error": "图片不存在"}, status_code=404)
+    r = dict(row)
+    return {
+        "id": r["id"],
+        "src": "/gallery-files/" + "/".join(quote(part) for part in str(r["path"]).split("/")),
+        "title": r["title"],
+        "positive": r["positive_prompt"],
+        "negative": r["negative_prompt"],
+        "checkpoint": r["checkpoint"],
+        "loras": r["loras"],
+        "parameters": r["generation_params"] or r["parameters"],
+        "metadata": r["metadata_json"],
+        "metadataSource": r["metadata_source"],
+    }
+
+
 @app.post("/scan-gallery")
 def scan_gallery_route(folder: str = Form("")):
     folder = normalize_gallery_folder(folder)
@@ -941,23 +963,75 @@ def delete_recipe(recipe_id: int):
 
 # ─── 角色卡 ───────────────────────────────────────────────────────────────────
 
+CHAR_PAGE_LIMIT = 60
+CHAR_PAGE_MAX_LIMIT = 200
+
+
+def get_characters_page(q: str = "", offset: int = 0, limit: int = CHAR_PAGE_LIMIT):
+    """角色卡分页数据：/characters 首屏与 /api/characters/page 共用同一查询路径。
+
+    多取一行探测 has_more，分页批次不再执行 COUNT；服装只查当前页角色。
+    """
+    offset = max(0, offset)
+    limit = CHAR_PAGE_LIMIT if limit <= 0 else max(20, min(limit, CHAR_PAGE_MAX_LIMIT))
+    if q:
+        like = f"%{q}%"
+        where = " WHERE name LIKE ? OR lora LIKE ? OR trigger_words LIKE ? OR appearance LIKE ? OR notes LIKE ?"
+        params = [like, like, like, like, like]
+    else:
+        where, params = "", []
+    with connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM characters{where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            (*params, limit + 1, offset),
+        ).fetchall()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        ids = [r["id"] for r in rows]
+        outfit_map: dict[int, list] = {cid: [] for cid in ids}
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            outfits = conn.execute(
+                f"SELECT * FROM character_outfits WHERE character_id IN ({placeholders}) ORDER BY character_id, id",
+                ids,
+            ).fetchall()
+            for o in outfits:
+                outfit_map.setdefault(o["character_id"], []).append(o)
+    return [dict(r) for r in rows], outfit_map, has_more, limit
+
 
 @app.get("/characters", response_class=HTMLResponse)
-def characters(request: Request, q: str = ""):
-    with connect() as conn:
-        if q:
-            like = f"%{q}%"
-            rows = conn.execute(
-                "SELECT * FROM characters WHERE name LIKE ? OR lora LIKE ? OR trigger_words LIKE ? OR appearance LIKE ? OR notes LIKE ? ORDER BY updated_at DESC",
-                (like, like, like, like, like),
-            ).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM characters ORDER BY updated_at DESC").fetchall()
-        outfits = conn.execute("SELECT * FROM character_outfits ORDER BY character_id, id").fetchall()
-    outfit_map: dict[int, list] = {}
-    for o in outfits:
-        outfit_map.setdefault(o["character_id"], []).append(o)
-    return templates.TemplateResponse(request, "characters.html", {"rows": rows, "outfit_map": outfit_map, "q": q})
+def characters(request: Request, q: str = "", offset: int = 0, limit: int = CHAR_PAGE_LIMIT):
+    rows, outfit_map, has_more, page_limit = get_characters_page(q, offset, limit)
+    return templates.TemplateResponse(
+        request,
+        "characters.html",
+        {
+            "rows": rows,
+            "outfit_map": outfit_map,
+            "q": q,
+            "has_more": has_more,
+            "next_offset": offset + len(rows),
+            "loaded_count": offset + len(rows),
+            "page_limit": page_limit,
+        },
+    )
+
+
+@app.get("/api/characters/page")
+def api_characters_page(q: str = "", offset: int = 0, limit: int = CHAR_PAGE_LIMIT):
+    rows, outfit_map, has_more, page_limit = get_characters_page(q, offset, limit)
+    payload_rows = []
+    for row in rows:
+        row = dict(row)
+        row["outfits"] = [
+            {"id": o["id"], "name": o["name"], "tags": o["tags"], "notes": o["notes"]}
+            for o in outfit_map.get(row["id"], [])
+        ]
+        payload_rows.append(row)
+    return JSONResponse(
+        {"rows": payload_rows, "next_offset": offset + len(rows), "has_more": has_more, "limit": page_limit, "q": q}
+    )
 
 
 @app.post("/characters/add")

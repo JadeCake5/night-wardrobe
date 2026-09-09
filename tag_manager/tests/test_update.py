@@ -23,7 +23,7 @@ from tag_manager.update_service import (
 REMOTE_README = """# night-wardrobe
 
 一些说明文字
-当前版本：**v1.25.1**
+当前版本：**v1.26.0**
 其他内容
 """
 
@@ -46,7 +46,7 @@ def fake_download(zip_path: Path):
 
 class VersionParseTests(unittest.TestCase):
     def test从README解析远程版本(self) -> None:
-        self.assertEqual("1.25.1", parse_remote_version(REMOTE_README))
+        self.assertEqual("1.26.0", parse_remote_version(REMOTE_README))
 
     def test解析容忍v前缀与空白(self) -> None:
         text = "当前版本：** v2.0.0 **\n"
@@ -60,21 +60,21 @@ class VersionParseTests(unittest.TestCase):
 
 class VersionCompareTests(unittest.TestCase):
     def test落后返回负一(self) -> None:
-        self.assertEqual(-1, compare_versions("1.24.14", "1.25.1"))
+        self.assertEqual(-1, compare_versions("1.24.14", "1.26.0"))
 
     def test相等返回零(self) -> None:
         self.assertEqual(0, compare_versions("1.24.14", "1.24.14"))
 
     def test领先返回正一(self) -> None:
-        self.assertEqual(1, compare_versions("1.25.1", "1.24.14"))
+        self.assertEqual(1, compare_versions("1.26.0", "1.24.14"))
 
     def test跨位比较(self) -> None:
         self.assertEqual(-1, compare_versions("1.9.0", "2.0.0"))
         self.assertEqual(1, compare_versions("1.24.10", "1.24.9"))
 
     def test格式非法视为相等(self) -> None:
-        self.assertEqual(0, compare_versions("", "1.25.1"))
-        self.assertEqual(0, compare_versions("abc", "1.25.1"))
+        self.assertEqual(0, compare_versions("", "1.26.0"))
+        self.assertEqual(0, compare_versions("abc", "1.26.0"))
 
 
 class PathGuardTests(unittest.TestCase):
@@ -116,12 +116,12 @@ class CheckUpdateTests(unittest.TestCase):
         )
         result = service.check()
         self.assertEqual("behind", result["status"])
-        self.assertEqual("1.25.1", result["remote_version"])
+        self.assertEqual("1.26.0", result["remote_version"])
         self.assertIn("1.24.14", result["current_version"])
 
     def test已是最新版本(self) -> None:
         service = GithubUpdateService(
-            current_version="1.25.1",
+            current_version="1.26.0",
             fetch_text=lambda url, timeout: REMOTE_README,
         )
         result = service.check()
@@ -129,7 +129,7 @@ class CheckUpdateTests(unittest.TestCase):
 
     def test本地领先远程(self) -> None:
         service = GithubUpdateService(
-            current_version="1.26.0",
+            current_version="1.27.0",
             fetch_text=lambda url, timeout: REMOTE_README,
         )
         result = service.check()
@@ -304,7 +304,7 @@ class UpdateRouteTests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         data = response.json()
         self.assertEqual("behind", data["status"])
-        self.assertEqual("1.25.1", data["remote_version"])
+        self.assertEqual("1.26.0", data["remote_version"])
         self.assertEqual("1.24.14", data["current_version"])
 
     def test更新接口成功返回文件摘要(self) -> None:

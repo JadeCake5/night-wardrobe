@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block main_attrs %} data-heavy{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>图库</h1>
@@ -194,38 +195,45 @@
 </div>
 
 <script>
-var galleryData = {
-{% for row in rows %}
-  {{ row.id }}: {
-    src: {{ ('/gallery-files/' ~ (row.path|urlpath))|tojson }},
-    title: {{ row.title|tojson }},
-    positive: {{ row.positive_prompt|tojson }},
-    negative: {{ row.negative_prompt|tojson }},
-    checkpoint: {{ row.checkpoint|tojson }},
-    loras: {{ row.loras|tojson }},
-    parameters: {{ (row.generation_params or row.parameters)|tojson }},
-    metadata: {{ row.metadata_json|tojson }},
-    metadataSource: {{ row.metadata_source|tojson }}
-  },
-{% endfor %}
-};
+// Lightbox 详情按需加载：打开时才按 id 拉取单条，列表页不再内联全部提示词/参数/metadata
+var lightboxRequestId = 0;
 
-function openLightbox(id) {
-  const d = galleryData[id];
-  if (!d) return;
-  document.getElementById('lb-img').src = d.src;
-  document.getElementById('lb-title').textContent = d.title;
-  document.getElementById('lb-positive').textContent = d.positive;
-  document.getElementById('lb-negative').textContent = d.negative;
-  document.getElementById('lb-checkpoint').textContent = d.checkpoint ? '模型: ' + d.checkpoint : '';
-  document.getElementById('lb-loras').textContent = d.loras ? 'LoRA: ' + d.loras : '';
-  document.getElementById('lb-source').textContent = d.metadataSource ? '来源: ' + d.metadataSource : '';
-  document.getElementById('lb-params').textContent = d.parameters || '无';
-  document.getElementById('lb-metadata').textContent = d.metadata || '无';
-  document.getElementById('lightbox').classList.add('active');
+async function openLightbox(id) {
+  const requestId = ++lightboxRequestId;
+  const box = document.getElementById('lightbox');
+  box.classList.add('active');
+  // 先清掉上一张内容，避免详情未返回时残留旧图
+  document.getElementById('lb-img').src = '';
+  document.getElementById('lb-title').textContent = '加载中...';
+  document.getElementById('lb-positive').textContent = '';
+  document.getElementById('lb-negative').textContent = '';
+  document.getElementById('lb-checkpoint').textContent = '';
+  document.getElementById('lb-loras').textContent = '';
+  document.getElementById('lb-source').textContent = '';
+  document.getElementById('lb-params').textContent = '';
+  document.getElementById('lb-metadata').textContent = '';
+  try {
+    const resp = await fetch('/api/gallery/' + id);
+    if (requestId !== lightboxRequestId) return; // 已打开其他图片，丢弃旧响应
+    if (!resp.ok) { closeLightbox(); return; }
+    const d = await resp.json();
+    if (requestId !== lightboxRequestId) return;
+    document.getElementById('lb-img').src = d.src;
+    document.getElementById('lb-title').textContent = d.title;
+    document.getElementById('lb-positive').textContent = d.positive;
+    document.getElementById('lb-negative').textContent = d.negative;
+    document.getElementById('lb-checkpoint').textContent = d.checkpoint ? '模型: ' + d.checkpoint : '';
+    document.getElementById('lb-loras').textContent = d.loras ? 'LoRA: ' + d.loras : '';
+    document.getElementById('lb-source').textContent = d.metadataSource ? '来源: ' + d.metadataSource : '';
+    document.getElementById('lb-params').textContent = d.parameters || '无';
+    document.getElementById('lb-metadata').textContent = d.metadata || '无';
+  } catch (e) {
+    if (requestId === lightboxRequestId) closeLightbox();
+  }
 }
 
 function closeLightbox() {
+  lightboxRequestId++;
   document.getElementById('lightbox').classList.remove('active');
 }
 

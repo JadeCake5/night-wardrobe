@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block main_attrs %} data-heavy{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>角色卡</h1>
@@ -103,6 +104,14 @@
 {% endif %}
 </div>
 
+{% if has_more %}
+<div class="load-more-bar">
+  <button type="button" class="btn-sm" id="loadMoreChars"
+          data-next-offset="{{ next_offset }}" data-limit="{{ page_limit }}" data-q="{{ q|e }}">加载更多</button>
+  <span class="load-more-count">已加载 <b id="charsLoadedCount">{{ loaded_count }}</b> 个角色</span>
+</div>
+{% endif %}
+
 <!-- 编辑悬浮窗 -->
 <div id="edit-panel" class="floating-panel" style="display:none">
   <div class="panel-header">
@@ -172,5 +181,123 @@ document.querySelectorAll('.floating-panel .panel-header').forEach(header => {
     panel.style.right = 'auto';
   }
 });
+</script>
+
+<script>
+// 「加载更多」分页：首屏服务端渲染一页，后续批次经 /api/characters/page 追加
+(function() {
+  var loadMoreBtn = document.getElementById('loadMoreChars');
+  if (!loadMoreBtn) return;
+  var grid = document.querySelector('.char-grid');
+  var loadingMore = false;
+
+  function escapeHTML(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch];
+    });
+  }
+
+  function outfitItemHTML(charId, outfit) {
+    var tags = String(outfit.tags || '');
+    var tagsShort = tags.length > 80 ? tags.slice(0, 80) + '...' : tags;
+    return `<div class="outfit-item">
+      <strong>${escapeHTML(outfit.name)}</strong>
+      <span class="outfit-tags">${escapeHTML(tagsShort)}</span>
+      <button class="btn-copy" data-copy="${escapeHTML(tags)}">复制</button>
+      <form method="post" action="/characters/${charId}/outfits/${outfit.id}/delete" style="display:inline" onsubmit="return confirm('删除套组？')">
+        <button class="btn-sm btn-danger">x</button>
+      </form>
+    </div>`;
+  }
+
+  function charCardHTML(row) {
+    var id = Number(row.id);
+    var loraLine = row.lora ? `<div class="char-field">
+      <label>LoRA</label>
+      <span class="char-value">${escapeHTML(row.lora)}:${escapeHTML(row.lora_weight)}</span>
+      <button class="btn-copy" data-copy="${escapeHTML('<lora:' + row.lora + ':' + row.lora_weight + '>')}">复制</button>
+    </div>` : '';
+    var triggerLine = row.trigger_words ? `<div class="char-field">
+      <label>触发词</label>
+      <span class="char-value">${escapeHTML(row.trigger_words)}</span>
+      <button class="btn-copy" data-copy="${escapeHTML(row.trigger_words)}">复制</button>
+    </div>` : '';
+    var appearance = String(row.appearance || '');
+    var appearanceLine = appearance ? `<div class="char-field">
+      <label>外貌</label>
+      <span class="char-value">${escapeHTML(appearance.length > 120 ? appearance.slice(0, 120) + '...' : appearance)}</span>
+      <button class="btn-copy" data-copy="${escapeHTML(appearance)}">复制</button>
+    </div>` : '';
+    var notesLine = row.notes ? `<p class="char-notes">${escapeHTML(row.notes)}</p>` : '';
+    var outfits = (row.outfits || []).map(function(o) { return outfitItemHTML(id, o); }).join('');
+    return `<article class="char-card">
+    <div class="char-card-header">
+      <h3>${escapeHTML(row.name)}</h3>
+      <div class="char-actions">
+        <button class="btn-sm" onclick="editChar(${id})">编辑</button>
+        <form method="post" action="/characters/${id}/delete" style="display:inline" onsubmit="return confirm('删除角色「${escapeHTML(row.name)}」及其所有服装？')">
+          <button class="btn-sm btn-danger">删除</button>
+        </form>
+      </div>
+    </div>
+    ${loraLine}
+    ${triggerLine}
+    ${appearanceLine}
+    ${notesLine}
+    <div class="outfit-section">
+      <div class="outfit-header">
+        <label>服装套组</label>
+        <button class="btn-sm" onclick="this.nextElementSibling.style.display='block'">+ 添加</button>
+        <form class="outfit-add-form" style="display:none" method="post" action="/characters/${id}/outfits/add">
+          <input name="name" placeholder="套组名" required>
+          <textarea name="tags" rows="2" placeholder="服装 tag"></textarea>
+          <input name="notes" placeholder="备注">
+          <button>保存</button>
+          <button type="button" onclick="this.closest('form').style.display='none'">取消</button>
+        </form>
+      </div>
+      ${outfits}
+    </div>
+  </article>`;
+  }
+
+  async function loadMoreChars() {
+    if (loadingMore) return;
+    loadingMore = true;
+    loadMoreBtn.disabled = true;
+    try {
+      var params = new URLSearchParams();
+      if (loadMoreBtn.dataset.q) params.set('q', loadMoreBtn.dataset.q);
+      params.set('offset', loadMoreBtn.dataset.nextOffset);
+      params.set('limit', loadMoreBtn.dataset.limit);
+      var resp = await fetch('/api/characters/page?' + params.toString());
+      if (!resp.ok) return;
+      var data = await resp.json();
+      if (!data.rows.length) { loadMoreBtn.closest('.load-more-bar').remove(); return; }
+      var tpl = document.createElement('template');
+      tpl.innerHTML = data.rows.map(charCardHTML).join('');
+      grid.appendChild(tpl.content);
+      data.rows.forEach(function(row) {
+        charsData[row.id] = {
+          name: row.name, lora: row.lora, lora_weight: row.lora_weight,
+          trigger_words: row.trigger_words, appearance: row.appearance, notes: row.notes
+        };
+      });
+      loadMoreBtn.dataset.nextOffset = String(data.next_offset);
+      document.getElementById('charsLoadedCount').textContent = String(data.next_offset);
+      if (!data.has_more) loadMoreBtn.closest('.load-more-bar').remove();
+    } finally {
+      loadingMore = false;
+      if (loadMoreBtn.isConnected) loadMoreBtn.disabled = false;
+    }
+  }
+
+  loadMoreBtn.addEventListener('click', loadMoreChars);
+  // 追加卡片的复制按钮统一走委托，data-copy 已做 HTML 转义
+  grid.addEventListener('click', function(e) {
+    var btn = e.target.closest('button[data-copy]');
+    if (btn) copyText(btn, btn.dataset.copy);
+  });
+})();
 </script>
 {% endblock %}

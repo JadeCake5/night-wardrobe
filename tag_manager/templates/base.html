@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>夜之主衣柜</title>
-  <link rel="stylesheet" href="/static/style.css?v=92">
+  <link rel="stylesheet" href="/static/style.css?v=93">
 </head>
 <body>
   <div class="app-layout">
     <aside class="app-sidebar">
       <a class="brand" href="/">
         <span class="brand-mark">NW</span>
-        <span class="brand-copy">夜之主衣柜 <small>v1.25.1</small></span>
+        <span class="brand-copy">夜之主衣柜 <small>v1.26.0</small></span>
       </a>
       <nav class="side-nav" data-main-nav aria-label="主导航">
         <a class="nav-item" href="/tags" title="Tag 库">
@@ -61,7 +61,7 @@
       </nav>
     </aside>
     <div id="nav-loading" class="nav-loading">加载中...</div>
-    <main class="app-main">
+    <main class="app-main"{% block main_attrs %}{% endblock %}>
       {% block content %}{% endblock %}
     </main>
   </div>
@@ -101,7 +101,8 @@
     }
 
     function isHeavyPage() {
-      return main.querySelectorAll('*').length > 4000;
+      // 声明式 heavy 检测：大页面模板在 <main> 上声明 data-heavy，导航前不做全树扫描
+      return main.hasAttribute('data-heavy');
     }
 
     function showOverlay() {
@@ -121,23 +122,41 @@
       });
     }
 
+    // 导航序号 + AbortController：新导航发起时取消旧 fetch，旧响应晚到时直接丢弃，
+    // 不再触发全量替换；返回 'superseded' 表示已被更新的导航取代（不算失败，不整页回退）。
+    var navSeq = 0;
+    var navAbort = null;
+    var navBusy = false;
+    var navBusyUrl = null;
+
     async function navigate(url, pushState) {
+      const seq = ++navSeq;
+      if (navAbort) navAbort.abort();
+      const controller = new AbortController();
+      navAbort = controller;
+      navBusy = true;
+      navBusyUrl = url;
       showOverlay();
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (seq !== navSeq) return 'superseded';
 
       if (typeof window.__wardrobePageCleanup === 'function') window.__wardrobePageCleanup();
       saveTextareas();
-      const heavy = isHeavyPage();
-      if (heavy) main.textContent = '';
+      if (isHeavyPage()) main.textContent = '';
 
       try {
-        const resp = await fetch(url);
+        const resp = await fetch(url, {signal: controller.signal});
+        if (seq !== navSeq) return 'superseded';
         if (!resp.ok) { hideOverlay(); return false; }
         const html = await resp.text();
+        if (seq !== navSeq) return 'superseded';
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const newMain = doc.querySelector('main');
         if (!newMain) { hideOverlay(); return false; }
         main.innerHTML = newMain.innerHTML;
+        // main 元素本身不换，需同步新页面的 heavy 声明供下次导航判断
+        if (newMain.hasAttribute('data-heavy')) main.setAttribute('data-heavy', '');
+        else main.removeAttribute('data-heavy');
         execScripts(main);
         restoreTextareas();
         hideOverlay();
@@ -145,7 +164,13 @@
         updateActiveNav(new URL(url, location.origin).pathname);
         window.scrollTo(0, 0);
         return true;
-      } catch(e) { hideOverlay(); return false; }
+      } catch(e) {
+        if (e && e.name === 'AbortError') return 'superseded';
+        hideOverlay();
+        return false;
+      } finally {
+        if (seq === navSeq) { navBusy = false; navBusyUrl = null; }
+      }
     }
 
     nav.addEventListener('click', e => {
@@ -153,12 +178,15 @@
       if (!a || !a.getAttribute('href').startsWith('/')) return;
       if (a.hasAttribute('data-full-load')) return;
       e.preventDefault();
-      navigate(a.href, true).then(ok => { if (!ok) location.href = a.href; });
+      // 导航进行中忽略同链接重复点击，避免并发全量替换
+      if (navBusy && navBusyUrl === a.href) return;
+      navigate(a.href, true).then(ok => { if (ok === false) location.href = a.href; });
     });
 
     document.querySelector('.brand').addEventListener('click', e => {
       e.preventDefault();
-      navigate('/', true).then(ok => { if (!ok) location.href = '/'; });
+      if (navBusy && navBusyUrl === location.origin + '/') return;
+      navigate('/', true).then(ok => { if (ok === false) location.href = '/'; });
     });
 
     window.addEventListener('popstate', () => { navigate(location.href, false); });

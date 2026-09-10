@@ -58,7 +58,7 @@ from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, 
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.26.0")
+app = FastAPI(title="夜之主衣柜", version="1.26.1")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
@@ -301,7 +301,7 @@ def import_magic_book_route():
 def get_tag_rows(q: str = "", category: str = "", subcategory: str = "", offset: int = 0, limit: int = 80):
     limit = max(20, min(limit, 200))
     offset = max(0, offset)
-    query = "SELECT * FROM tags WHERE 1=1"
+    query = "SELECT id, tag, zh, category, subcategory, notes, source, rating FROM tags WHERE 1=1"
     count_query = "SELECT COUNT(*) FROM tags WHERE 1=1"
     params: list[str | int] = []
     count_params: list[str] = []

@@ -329,6 +329,13 @@
       if (loaded) loaded.textContent = String(nextTagOffset);
     } finally {
       loadingMoreTags = false;
+      if (hasMoreTags && sentinelObserver) {
+        const sentinel = document.getElementById('tagScrollSentinel');
+        if (sentinel) {
+          sentinelObserver.unobserve(sentinel);
+          sentinelObserver.observe(sentinel);
+        }
+      }
     }
   }
 

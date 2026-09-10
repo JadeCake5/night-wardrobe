@@ -60,6 +60,10 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE INDEX IF NOT EXISTS idx_tags_category_subcategory ON tags (category, subcategory);
+            CREATE INDEX IF NOT EXISTS idx_tags_rating_category_subcategory_tag ON tags (rating DESC, category, subcategory, tag);
+            CREATE INDEX IF NOT EXISTS idx_tags_updated_at ON tags (updated_at);
+
             CREATE TABLE IF NOT EXISTS tag_groups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,

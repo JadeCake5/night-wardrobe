@@ -123,14 +123,21 @@ class TagPageIndexTests(TagPageTestCase):
     def test列表查询使用复合索引且不再临时排序(self) -> None:
         order = "ORDER BY rating DESC, category, subcategory, tag LIMIT 81 OFFSET 0"
         cases = [
-            "SELECT * FROM tags WHERE 1=1 " + order,
-            ("SELECT * FROM tags WHERE 1=1 AND category = ? " + order, ("分类1",)),
+            "SELECT id, tag, zh, category, subcategory, notes, source, rating FROM tags WHERE 1=1 " + order,
+            ("SELECT id, tag, zh, category, subcategory, notes, source, rating FROM tags WHERE 1=1 AND category = ? " + order, ("分类1",)),
         ]
         for case in cases:
             sql, params = (case, ()) if isinstance(case, str) else case
             plan = self.query_plan(sql, params)
             self.assertTrue(any("idx_tags_" in step for step in plan), plan)
             self.assertFalse(any("TEMP B-TREE" in step for step in plan), plan)
+
+    def test断言tags表存在必要索引(self) -> None:
+        with db.connect(self.db_path) as conn:
+            indexes = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tags'").fetchall()]
+        self.assertIn("idx_tags_category_subcategory", indexes)
+        self.assertIn("idx_tags_rating_category_subcategory_tag", indexes)
+        self.assertIn("idx_tags_updated_at", indexes)
 
 
 class TagPageTemplateContractTests(unittest.TestCase):
@@ -144,6 +151,15 @@ class TagPageTemplateContractTests(unittest.TestCase):
         self.assertIn("window.__wardrobePageCleanup", self.template)
         self.assertIn("/api/tags/filter", self.template)
         self.assertIn("tagScrollSentinel", self.template)
+
+    def test无限滚动重挂哨兵契约(self) -> None:
+        self.assertIn("sentinelObserver.unobserve(sentinel)", self.template)
+        self.assertIn("sentinelObserver.observe(sentinel)", self.template)
+        # 确保包含重挂逻辑以应对加载后依然在视口内但不触发的问题
+        self.assertTrue(
+            self.template.find("sentinelObserver.unobserve(sentinel)") < 
+            self.template.find("sentinelObserver.observe(sentinel)")
+        )
 
     def test模板已移除泄漏与整页解析(self) -> None:
         self.assertNotIn("addEventListener('scroll'", self.template)

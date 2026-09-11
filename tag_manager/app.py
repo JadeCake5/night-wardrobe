@@ -58,7 +58,7 @@ from .workflows import WORKFLOW_DIR, WORKFLOW_EXTENSIONS, export_workflows_zip, 
 
 DEV_MODE = os.environ.get("WARDROBE_DEV", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="夜之主衣柜", version="1.26.1")
+app = FastAPI(title="夜之主衣柜", version="1.27.0")
 app.include_router(tag_api_router)
 app.include_router(video_decrypt_router)
 app.include_router(lora_router)
@@ -289,7 +289,9 @@ def index(request: Request):
             "workflows": conn.execute("SELECT COUNT(*) FROM workflows").fetchone()[0],
         }
         recent_images = conn.execute("SELECT * FROM gallery_images ORDER BY updated_at DESC LIMIT 8").fetchall()
-    return templates.TemplateResponse(request, "index.html", {"stats": stats, "recent_images": recent_images})
+        recent_recipes = conn.execute("SELECT * FROM recipes ORDER BY updated_at DESC LIMIT 8").fetchall()
+        recent_characters = conn.execute("SELECT * FROM characters ORDER BY updated_at DESC LIMIT 8").fetchall()
+    return templates.TemplateResponse(request, "index.html", {"stats": stats, "recent_images": recent_images, "recent_recipes": recent_recipes, "recent_characters": recent_characters})
 
 
 @app.post("/import-magic-book")
